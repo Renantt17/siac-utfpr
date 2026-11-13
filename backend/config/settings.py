@@ -11,6 +11,21 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta
+import os
+
+# Carrega as variáveis do arquivo .env
+def carregar_env():
+    caminho_env = Path(__file__).resolve().parent.parent.parent / '.env'
+
+    if caminho_env.exists():
+        with open(caminho_env, encoding='utf-8') as arquivo:
+            for linha in arquivo:
+                linha = linha.strip()
+
+                if linha and not linha.startswith('#') and '=' in linha:
+                    chave, valor = linha.split('=', 1)
+                    os.environ.setdefault(chave, valor)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,13 +35,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-$7e&bgu4(pej%-@to!$hz0d^cudks+2t+(ml6_ss!v95gw#a8s'
+carregar_env()
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = []
-
+SECRET_KEY = os.environ.get('SECRET_KEY')
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+ALLOWED_HOSTS = [
+    host for host in os.environ.get('ALLOWED_HOSTS', '').split(',')
+    if host
+]
 
 # Application definition
 
@@ -37,6 +53,11 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
+    # Bibliotecas externas
+    'rest_framework',
+    'rest_framework_simplejwt',
+
     # Aplicativos do projeto
     'apps.accounts.apps.AccountsConfig',
     'apps.courses.apps.CoursesConfig',
@@ -109,9 +130,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'pt-br'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/Sao_Paulo'
 
 USE_I18N = True
 
@@ -121,9 +142,35 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
+# Arquivos estáticos do sistema
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Arquivos enviados pelos usuários
+MEDIA_URL = 'media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+REST_FRAMEWORK = {
+    # Autenticação por token JWT
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+
+    # Exige autenticação nas rotas por padrão
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+}
+
+SIMPLE_JWT = {
+    # Token de acesso válido por 15 minutos
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
+
+    # Token de atualização válido por 1 dia
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+}
