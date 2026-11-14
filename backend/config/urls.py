@@ -1,5 +1,8 @@
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
+
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -11,4 +14,16 @@ urlpatterns = [
     # Autenticação JWT
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-]   
+
+    # Contas
+    path('api/', include('apps.accounts.urls')),
+
+    # Submissões
+    path('api/submissions/', include('apps.submissions.urls')),
+
+    # Homologação
+    path('api/homologation/', include('apps.homologation.urls')),
+]
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
