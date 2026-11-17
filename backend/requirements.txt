@@ -2,6 +2,7 @@ asgiref==3.13.0
 charset-normalizer==3.5.2
 colorama==0.4.6
 Django==5.2.19
+django-cors-headers==4.9.0
 djangorestframework==3.18.3
 djangorestframework_simplejwt==5.5.1
 filetype==1.2.0

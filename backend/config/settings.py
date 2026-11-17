@@ -74,12 +74,15 @@ INSTALLED_APPS = [
     'apps.homologation.apps.HomologationConfig',
     'apps.opportunities.apps.OpportunitiesConfig',
     'apps.audit.apps.AuditConfig',
+
+    'corsheaders',
 ]
 
 AUTH_USER_MODEL = 'accounts.User'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
