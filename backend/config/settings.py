@@ -37,12 +37,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 carregar_env()
 
-DEBUG = os.environ.get('DEBUG', 'False').lower() in ('1', 'true', 'yes')
-SECRET_KEY = os.environ.get('SECRET_KEY') or (
-    'django-insecure-siac-local-development-only' if DEBUG else None
-)
-if not SECRET_KEY:
-    raise RuntimeError('Defina SECRET_KEY no ambiente antes de iniciar o Django.')
+def env_bool(name, default=False):
+    return os.environ.get(name, str(default)).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+DEBUG = env_bool('DEBUG', False)
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY or len(SECRET_KEY) < 50:
+    raise RuntimeError('Defina SECRET_KEY com pelo menos 50 caracteres no ambiente.')
 
 ALLOWED_HOSTS = [
     host.strip() for host in os.environ.get(
@@ -118,7 +120,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': os.environ.get('DB_NAME', 'siac'),
         'USER': os.environ.get('DB_USER', 'siac'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', 'siac_dev_password'),
+        'PASSWORD': os.environ.get('DB_PASSWORD'),
         'HOST': os.environ.get('DB_HOST', 'localhost'),
         'PORT': os.environ.get('DB_PORT', '5432'),
         'OPTIONS': {
@@ -180,6 +182,7 @@ CORS_ALLOWED_ORIGINS = [
     ).split(',') if origin.strip()
 ]
 
+# Limites básicos contra abuso de endpoints públicos e autenticados.
 REST_FRAMEWORK = {
     # Autenticação por token JWT
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -190,6 +193,14 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '30/hour',
+        'user': '1000/hour',
+    },
 }
 
 SIMPLE_JWT = {
@@ -199,7 +210,22 @@ SIMPLE_JWT = {
     # Token de atualização válido por 1 dia
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
 }
+# Cabeçalhos e cookies seguros. Em desenvolvimento HTTP, SECURE_COOKIES pode
+# ser definido como False no .env; em HTTPS de produção, mantenha True.
+SECURE_COOKIES = env_bool('SECURE_COOKIES', not DEBUG)
+SESSION_COOKIE_SECURE = SECURE_COOKIES
+CSRF_COOKIE_SECURE = SECURE_COOKIES
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = 'same-origin'
+X_FRAME_OPTIONS = 'DENY'
+SECURE_SSL_REDIRECT = env_bool('SECURE_SSL_REDIRECT', False)
+SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '0'))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', False)
+SECURE_HSTS_PRELOAD = env_bool('SECURE_HSTS_PRELOAD', False)
 
-CORS_ALLOWED_ORIGINS = [
-    'http://localhost:5173',
-]
+# O limite de negócio para comprovantes é 10 MB.
+FILE_UPLOAD_MAX_MEMORY_SIZE = 2 * 1024 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 1000
+FILE_UPLOAD_PERMISSIONS = 0o640
+FILE_UPLOAD_DIRECTORY_PERMISSIONS = 0o750

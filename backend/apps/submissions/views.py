@@ -94,9 +94,10 @@ class SubmissionFileView(APIView):
             content_type=submission.mime_type or 'application/octet-stream',
         )
         response['Content-Disposition'] = (
-            f'inline; filename="comprovante-{submission.public_id}.{submission.file_ext}"'
+            f'attachment; filename="comprovante-{submission.public_id}.{submission.file_ext}"'
         )
         response['X-Content-Type-Options'] = 'nosniff'
+        response['Cache-Control'] = 'private, no-store'
         return response
 
 
@@ -105,7 +106,20 @@ class EvaluateSubmissionView(APIView):
 
     def post(self, request, public_id):
         decision = request.data.get('decision')
-        feedback = str(request.data.get('feedback', '')).strip()
+        raw_feedback = request.data.get('feedback', '')
+        if raw_feedback is None:
+            raw_feedback = ''
+        if not isinstance(raw_feedback, str):
+            return Response(
+                {'feedback': 'Informe um texto válido.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        feedback = raw_feedback.strip()
+        if len(feedback) > 2000:
+            return Response(
+                {'feedback': 'O feedback deve ter no máximo 2000 caracteres.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         raw_quantity = request.data.get('validated_quantity')
 
         if decision not in ('APPROVED', 'REJECTED'):
@@ -252,8 +266,8 @@ class EvaluateSubmissionView(APIView):
 
     @staticmethod
     def _client_ip(request):
-        forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
-        return forwarded.split(',')[0].strip() if forwarded else request.META.get('REMOTE_ADDR')
+        # Não confiar em X-Forwarded-For sem proxy explicitamente confiável.
+        return request.META.get('REMOTE_ADDR')
 
 
 class NotificationListView(ListAPIView):

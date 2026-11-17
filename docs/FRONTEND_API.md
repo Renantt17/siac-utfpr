@@ -174,7 +174,7 @@ A pontuação aprovada respeita o teto acumulado por item e semestre. A avaliaç
 
 ### `GET /submissions/{public_id}/file/`
 
-Abre o comprovante. Requer autenticação e autorização: dono da submissão ou avaliador autorizado. Não usar URL pública de `MEDIA_URL`.
+Baixa o comprovante como anexo. Requer autenticação e autorização: dono da submissão ou avaliador autorizado. Não usar URL pública de `MEDIA_URL`.
 
 ## 4. Pontuação e homologação
 
