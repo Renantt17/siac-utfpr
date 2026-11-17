@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 .git/
 .env
-db.sqlite3media/
+db.sqlite3
+media/
 staticfiles/
 *.sqlite3

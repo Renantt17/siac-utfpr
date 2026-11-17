@@ -134,3 +134,78 @@ class SubmissionFlowApiTests(APITestCase):
         history = self.client.get('/api/submissions/')
         self.assertEqual(history.status_code, 200)
         self.assertEqual(history.data[0]['status'], 'APPROVED')
+    def test_rejects_file_with_invalid_signature(self):
+        self.client.force_authenticate(self.student)
+        today = timezone.localdate()
+        response = self.client.post('/api/submissions/', {
+            'enrollment': self.enrollment.pk,
+            'activity_item': self.item.pk,
+            'description': 'Arquivo inválido',
+            'activity_start_date': today.isoformat(),
+            'activity_end_date': today.isoformat(),
+            'semester': f'{today.year}-{1 if today.month <= 6 else 2}',
+            'declared_quantity': 1,
+            'file': SimpleUploadedFile(
+                'falso.pdf', b'isto nao e um PDF', content_type='application/pdf'
+            ),
+        }, format='multipart')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('file', response.data)
+
+    def test_student_cannot_evaluate_submission(self):
+        self.client.force_authenticate(self.student)
+        today = timezone.localdate()
+        response = self.client.post('/api/submissions/', {
+            'enrollment': self.enrollment.pk,
+            'activity_item': self.item.pk,
+            'description': 'Comprovante para teste de permissão',
+            'activity_start_date': today.isoformat(),
+            'activity_end_date': today.isoformat(),
+            'semester': f'{today.year}-{1 if today.month <= 6 else 2}',
+            'declared_quantity': 1,
+            'file': SimpleUploadedFile(
+                'comprovante.pdf',
+                b'%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF',
+                content_type='application/pdf',
+            ),
+        }, format='multipart')
+        self.assertEqual(response.status_code, 201)
+        public_id = response.data['public_id']
+
+        denied = self.client.post(
+            f'/api/submissions/{public_id}/evaluate/',
+            {'decision': 'APPROVED', 'validated_quantity': 1},
+            format='json',
+        )
+        self.assertEqual(denied.status_code, 403)
+    def test_evaluation_feedback_has_maximum_length(self):
+        self.client.force_authenticate(self.student)
+        today = timezone.localdate()
+        created = self.client.post('/api/submissions/', {
+            'enrollment': self.enrollment.pk,
+            'activity_item': self.item.pk,
+            'description': 'Submissão para validar feedback',
+            'activity_start_date': today.isoformat(),
+            'activity_end_date': today.isoformat(),
+            'semester': f'{today.year}-{1 if today.month <= 6 else 2}',
+            'declared_quantity': 1,
+            'file': SimpleUploadedFile(
+                'comprovante.pdf',
+                b'%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n%%EOF',
+                content_type='application/pdf',
+            ),
+        }, format='multipart')
+        self.assertEqual(created.status_code, 201)
+
+        self.client.force_authenticate(self.professor)
+        evaluated = self.client.post(
+            f"/api/submissions/{created.data['public_id']}/evaluate/",
+            {
+                'decision': 'REJECTED',
+                'validated_quantity': 0,
+                'feedback': 'x' * 2001,
+            },
+            format='json',
+        )
+        self.assertEqual(evaluated.status_code, 400)
+        self.assertIn('feedback', evaluated.data)

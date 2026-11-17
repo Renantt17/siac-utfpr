@@ -77,6 +77,10 @@ class SubmissionCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({
                 'activity_end_date': 'A data final não pode ser anterior à data inicial.'
             })
+        if uploaded_file.size <= 0:
+            raise serializers.ValidationError({
+                'file': 'O arquivo enviado está vazio.'
+            })
         if uploaded_file.size > MAX_UPLOAD_SIZE:
             raise serializers.ValidationError({
                 'file': 'O arquivo deve ter no máximo 10 MB.'

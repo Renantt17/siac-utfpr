@@ -93,9 +93,11 @@ class HomologationSummaryView(APIView):
 class FinalizeHomologationView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
+    @transaction.atomic
     def post(self, request, enrollment_id):
         try:
-            enrollment = Enrollment.objects.select_related(
+            # Bloqueia a matrícula para impedir duas homologações simultâneas.
+            enrollment = Enrollment.objects.select_for_update().select_related(
                 'student', 'course', 'course__campus'
             ).get(pk=enrollment_id)
         except Enrollment.DoesNotExist:
