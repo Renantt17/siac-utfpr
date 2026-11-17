@@ -37,11 +37,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 carregar_env()
 
-SECRET_KEY = os.environ.get('SECRET_KEY')
-DEBUG = os.environ.get('DEBUG', 'False') == 'True'
+DEBUG = os.environ.get('DEBUG', 'False').lower() in ('1', 'true', 'yes')
+SECRET_KEY = os.environ.get('SECRET_KEY') or (
+    'django-insecure-siac-local-development-only' if DEBUG else None
+)
+if not SECRET_KEY:
+    raise RuntimeError('Defina SECRET_KEY no ambiente antes de iniciar o Django.')
+
 ALLOWED_HOSTS = [
-    host for host in os.environ.get('ALLOWED_HOSTS', '').split(',')
-    if host
+    host.strip() for host in os.environ.get(
+        'ALLOWED_HOSTS', 'localhost,127.0.0.1'
+    ).split(',') if host.strip()
 ]
 
 # Application definition
@@ -57,6 +63,7 @@ INSTALLED_APPS = [
     # Bibliotecas externas
     'rest_framework',
     'rest_framework_simplejwt',
+    'corsheaders',
 
     # Aplicativos do projeto
     'apps.accounts.apps.AccountsConfig',
@@ -75,6 +82,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -164,6 +172,13 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+CORS_ALLOWED_ORIGINS = [
+    origin.strip() for origin in os.environ.get(
+        'CORS_ALLOWED_ORIGINS',
+        'http://localhost:5173,http://127.0.0.1:5173'
+    ).split(',') if origin.strip()
+]
 
 REST_FRAMEWORK = {
     # Autenticação por token JWT
