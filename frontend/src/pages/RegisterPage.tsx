@@ -1,6 +1,7 @@
 
-import { useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import axios from 'axios'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -9,23 +10,48 @@ import {
   GraduationCap,
   UserRound,
 } from 'lucide-react'
+import registerService, {
+  type Campus,
+} from '../services/registerService'
 
 const inputClass =
   'mt-2 w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200'
 
 export default function RegisterPage() {
+  const navigate = useNavigate()
+
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [institutionalId, setInstitutionalId] = useState('')
   const [campus, setCampus] = useState('')
+  const [campuses, setCampuses] = useState<Campus[]>([])
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [message, setMessage] = useState('')
+  const [success, setSuccess] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [loadingCampuses, setLoadingCampuses] = useState(true)
 
-  function handleValidate(event: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    async function loadCampuses() {
+      try {
+        const data = await registerService.getCampuses()
+        setCampuses(data)
+      } catch {
+        setMessage('Não foi possível carregar os campi. Verifique a conexão com o servidor.')
+      } finally {
+        setLoadingCampuses(false)
+      }
+    }
+
+    loadCampuses()
+  }, [])
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setMessage('')
+    setSuccess(false)
 
     if (fullName.trim().length < 3) {
       setMessage('Informe seu nome completo.')
@@ -57,9 +83,56 @@ export default function RegisterPage() {
       return
     }
 
-    setMessage(
-      'Dados válidos. O cadastro estará disponível após a integração com o servidor.'
-    )
+    setLoading(true)
+
+    try {
+      await registerService.register({
+        full_name: fullName.trim(),
+        email: email.trim(),
+        institutional_id: institutionalId.trim(),
+        campus: Number(campus),
+        password,
+        confirmPassword,
+      })
+
+      setSuccess(true)
+      setMessage('Conta criada com sucesso! Redirecionando para o login...')
+
+      setTimeout(() => {
+        navigate('/')
+      }, 1800)
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status
+        const data = error.response?.data
+
+        if (status === 400 && data && typeof data === 'object') {
+          const details = Object.entries(data as Record<string, unknown>)
+            .map(([field, value]) => {
+              const content = Array.isArray(value)
+                ? value.join(', ')
+                : String(value)
+
+              return `${field}: ${content}`
+            })
+            .join(' | ')
+
+          setMessage(details || 'Verifique os dados informados.')
+        } else if (status === 409) {
+          setMessage('Já existe um cadastro com esses dados.')
+        } else if (status === 403) {
+          setMessage('Você não tem permissão para realizar este cadastro.')
+        } else if (status === 404) {
+          setMessage('O serviço de cadastro não foi encontrado.')
+        } else {
+          setMessage('Não foi possível criar a conta. Tente novamente.')
+        }
+      } else {
+        setMessage('Ocorreu um erro inesperado ao criar a conta.')
+      }
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -104,12 +177,12 @@ export default function RegisterPage() {
             </h2>
 
             <p className="mt-3 text-sm leading-6 text-gray-600">
-              Preencha seus dados para preparar seu acesso
-              ao Sistema Integrado de Atividades Complementares.
+              Preencha seus dados para acessar o Sistema Integrado
+              de Atividades Complementares.
             </p>
           </div>
 
-          <form onSubmit={handleValidate} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div>
               <label htmlFor="fullName" className="text-sm font-semibold">
                 Nome completo
@@ -152,9 +225,7 @@ export default function RegisterPage() {
                 <input
                   id="institutionalId"
                   value={institutionalId}
-                  onChange={(event) =>
-                    setInstitutionalId(event.target.value)
-                  }
+                  onChange={(event) => setInstitutionalId(event.target.value)}
                   placeholder="RA ou identificação"
                   maxLength={30}
                   required
@@ -173,10 +244,20 @@ export default function RegisterPage() {
                 value={campus}
                 onChange={(event) => setCampus(event.target.value)}
                 required
+                disabled={loadingCampuses || campuses.length === 0}
                 className={inputClass}
               >
-                <option value="">Selecione o campus</option>
-                <option value="DV">Dois Vizinhos</option>
+                <option value="">
+                  {loadingCampuses
+                    ? 'Carregando campi...'
+                    : 'Selecione o campus'}
+                </option>
+
+                {campuses.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -202,16 +283,10 @@ export default function RegisterPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    aria-label={
-                      showPassword ? 'Ocultar senha' : 'Mostrar senha'
-                    }
+                    aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                     className="absolute right-4 top-1/2 mt-1 -translate-y-1/2 text-gray-500"
                   >
-                    {showPassword ? (
-                      <EyeOff size={18} />
-                    ) : (
-                      <Eye size={18} />
-                    )}
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
               </div>
@@ -227,9 +302,7 @@ export default function RegisterPage() {
                   id="confirmPassword"
                   type={showPassword ? 'text' : 'password'}
                   value={confirmPassword}
-                  onChange={(event) =>
-                    setConfirmPassword(event.target.value)
-                  }
+                  onChange={(event) => setConfirmPassword(event.target.value)}
                   placeholder="Repita sua senha"
                   autoComplete="new-password"
                   required
@@ -241,18 +314,16 @@ export default function RegisterPage() {
             {message && (
               <div
                 role="status"
-                className="flex items-start gap-2 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-800"
+                className={`flex items-start gap-2 rounded-xl border p-4 text-sm ${
+                  success
+                    ? 'border-green-200 bg-green-50 text-green-800'
+                    : 'border-red-200 bg-red-50 text-red-800'
+                }`}
               >
-                {message.startsWith('Dados válidos') ? (
-                  <CheckCircle2
-                    size={20}
-                    className="shrink-0 text-green-700"
-                  />
+                {success ? (
+                  <CheckCircle2 size={20} className="shrink-0" />
                 ) : (
-                  <UserRound
-                    size={20}
-                    className="shrink-0 text-red-700"
-                  />
+                  <UserRound size={20} className="shrink-0" />
                 )}
                 {message}
               </div>
@@ -260,9 +331,10 @@ export default function RegisterPage() {
 
             <button
               type="submit"
-              className="w-full rounded-xl bg-utfpr-yellow px-5 py-4 font-bold text-utfpr-black transition hover:brightness-95"
+              disabled={loading || loadingCampuses || campuses.length === 0 || success}
+              className="w-full rounded-xl bg-utfpr-yellow px-5 py-4 font-bold text-utfpr-black transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Verificar dados do cadastro
+              {loading ? 'Criando conta...' : 'Criar conta'}
             </button>
           </form>
 
