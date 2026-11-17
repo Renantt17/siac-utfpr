@@ -8,7 +8,7 @@ services:
     environment:
       DB_NAME: ${DB_NAME:-${POSTGRES_DB:-siac}}
       DB_USER: ${DB_USER:-${POSTGRES_USER:-siac}}
-      DB_PASSWORD: ${DB_PASSWORD:-${POSTGRES_PASSWORD:-siac_dev_password}}
+      DB_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD no arquivo .env}
       DB_HOST: db
       DB_PORT: 5432
     ports:
@@ -24,7 +24,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-siac}
       POSTGRES_USER: ${POSTGRES_USER:-siac}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-siac_dev_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
