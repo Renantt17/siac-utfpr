@@ -7,10 +7,16 @@ class Migration(migrations.Migration):
 
     initial = True
 
-    dependencies = [
-    ]
+    dependencies = []
 
     operations = [
+        migrations.RunSQL(
+            sql=[
+                'CREATE SCHEMA IF NOT EXISTS app',
+                'CREATE SCHEMA IF NOT EXISTS audit',
+            ],
+            reverse_sql=migrations.RunSQL.noop,
+        ),
         migrations.CreateModel(
             name='AuditLog',
             fields=[

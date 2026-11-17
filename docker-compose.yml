@@ -13,14 +13,16 @@ services:
   backend:
     build:
       context: ./backend
-    container_name: siac-backend
     env_file:
       - .env
     environment:
+      DB_NAME: ${DB_NAME:-${POSTGRES_DB:-siac}}
+      DB_USER: ${DB_USER:-${POSTGRES_USER:-siac}}
+      DB_PASSWORD: ${DB_PASSWORD:-${POSTGRES_PASSWORD:-siac_dev_password}}
       DB_HOST: db
       DB_PORT: 5432
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - ./backend:/app
     depends_on:
@@ -29,17 +31,16 @@ services:
 
   db:
     image: postgres:16-bookworm
-    container_name: siac-db
     environment:
-      POSTGRES_DB: siac
-      POSTGRES_USER: siac
-      POSTGRES_PASSWORD: siac_dev_password
+      POSTGRES_DB: ${POSTGRES_DB:-siac}
+      POSTGRES_USER: ${POSTGRES_USER:-siac}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-siac_dev_password}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U siac -d siac"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-siac} -d ${POSTGRES_DB:-siac}"]
       interval: 5s
       timeout: 5s
       retries: 5
