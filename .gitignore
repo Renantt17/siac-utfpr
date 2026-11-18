@@ -218,3 +218,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# SIAC - arquivos locais
+node_modules/
+backend/media/
+/comprovante.txt
