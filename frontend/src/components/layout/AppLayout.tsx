@@ -1,6 +1,7 @@
 
 import type { ReactNode } from 'react'
 import Sidebar from './Sidebar'
+import logoSiac from '../../assets/logo_siac.png'
 
 interface AppLayoutProps {
   children: ReactNode
@@ -12,9 +13,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
       <header className="w-full border-b-4 border-utfpr-yellow bg-utfpr-black px-4 py-4 text-white sm:px-6">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <p className="text-lg font-bold tracking-wide sm:text-xl">
-              SIAC
-            </p>
+            <img
+              src={logoSiac}
+              alt="SIAC"
+              className="h-12 w-auto max-w-full object-contain object-left sm:h-16"
+            />
 
             <p className="mt-1 text-[10px] leading-snug text-gray-300 sm:text-sm">
               Sistema Integrado de Atividades Complementares
