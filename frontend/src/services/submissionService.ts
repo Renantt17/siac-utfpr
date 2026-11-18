@@ -44,11 +44,6 @@ const submissionService = {
     const response = await api.post<Submission>(
       '/submissions/',
       formData,
-      {
-        headers: {
-          'Content-Type': undefined,
-        },
-      }
     )
 
     return response.data
