@@ -7,6 +7,8 @@ import {
   ClipboardList,
   GraduationCap,
   ClipboardCheck,
+  Bell,
+  CalendarDays,
 } from 'lucide-react'
 
 import userService, {
@@ -78,6 +80,8 @@ export default function Sidebar() {
       path: '/dashboard',
       icon: LayoutDashboard,
     },
+    { label: 'Notificações', path: '/notificacoes', icon: Bell },
+    { label: 'Oportunidades', path: '/oportunidades', icon: CalendarDays },
     ...(isStudent ? studentMenu : []),
     ...(canEvaluate ? evaluationMenu : []),
   ]

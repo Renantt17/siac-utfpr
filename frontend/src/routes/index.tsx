@@ -8,6 +8,8 @@ import NewSubmissionPage from '../pages/NewSubmissionPage'
 import MySubmissionsPage from '../pages/MySubmissionsPage'
 import ScorePage from '../pages/ScorePage'
 import PendingSubmissionsPage from '../pages/PendingSubmissionsPage'
+import NotificationsPage from '../pages/NotificationsPage'
+import OpportunitiesPage from '../pages/OpportunitiesPage'
 
 import ProtectedRoute from '../components/ProtectedRoute'
 import RoleProtectedRoute from '../components/ProtectedRoute/RoleProtectedRoute'
@@ -25,6 +27,8 @@ function AppRoutes() {
 
       <Route element={<ProtectedRoute />}>
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/notificacoes" element={<NotificationsPage />} />
+        <Route path="/oportunidades" element={<OpportunitiesPage />} />
 
         <Route
           path="/atividades/nova"
