@@ -1,0 +1,68 @@
+
+@import "tailwindcss";
+
+/*
+ * SIAC-UTFPR
+ * Estilos globais e tokens visuais.
+ *
+ * A paleta abaixo é uma referência inicial.
+ * Os valores devem ser conferidos com o manual
+ * oficial de identidade visual da UTFPR.
+ */
+
+@theme {
+  --color-utfpr-yellow: #ffcc00;
+  --color-utfpr-black: #111111;
+  --color-utfpr-white: #ffffff;
+
+  --color-siac-background: #f8f9fa;
+  --color-siac-border: #e5e7eb;
+  --color-siac-muted: #6b7280;
+
+  --font-sans: Arial, Helvetica, sans-serif;
+}
+
+:root {
+  font-family: Arial, Helvetica, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--color-siac-background);
+  color: var(--color-utfpr-black);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-utfpr-yellow);
+  outline-offset: 3px;
+}
+
+#root {
+  min-height: 100vh;
+}
