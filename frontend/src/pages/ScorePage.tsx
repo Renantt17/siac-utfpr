@@ -42,6 +42,20 @@ export default function ScorePage() {
   const [summaries, setSummaries] = useState<HomologationSummary[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
+
+  async function handleDownload(publicId: string) {
+    setDownloadError(null)
+    setDownloadingId(publicId)
+    try {
+      await homologationService.downloadReport(publicId)
+    } catch {
+      setDownloadError('Não foi possível baixar o relatório de homologação.')
+    } finally {
+      setDownloadingId(null)
+    }
+  }
 
   useEffect(() => {
     let active = true
@@ -79,6 +93,12 @@ export default function ScorePage() {
             de atividades complementares.
           </p>
         </div>
+
+        {downloadError && (
+          <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+            {downloadError}
+          </p>
+        )}
 
         {isLoading ? (
           <p role="status" className="text-siac-muted">
@@ -200,6 +220,25 @@ export default function ScorePage() {
                   </p>
                 </div>
               </div>
+
+              {summary.homologation && (
+                <div className="rounded-xl border border-siac-border bg-white p-6 shadow-sm">
+                  <h3 className="text-lg font-bold">Homologação concluída</h3>
+                  <p className="mt-2 text-sm text-siac-muted">
+                    Seu relatório de homologação está disponível para download.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={downloadingId === summary.homologation.public_id}
+                    onClick={() => void handleDownload(summary.homologation!.public_id)}
+                    className="mt-4 rounded-lg bg-utfpr-yellow px-4 py-2 font-semibold text-utfpr-black disabled:opacity-50"
+                  >
+                    {downloadingId === summary.homologation.public_id
+                      ? 'Baixando relatório...'
+                      : 'Baixar relatório PDF'}
+                  </button>
+                </div>
+              )}
 
               <div className="rounded-xl border border-siac-border bg-white p-6 shadow-sm">
                 <h3 className="mb-5 text-lg font-bold">
