@@ -6,12 +6,27 @@ import { Link } from 'react-router-dom'
 import AppLayout from '../components/layout/AppLayout'
 import submissionService, {
   type Submission,
+  openSubmissionFile,
 } from '../services/submissionService'
 
 export default function MySubmissionsPage() {
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [fileError, setFileError] = useState<string | null>(null)
+  const [openingFile, setOpeningFile] = useState<string | null>(null)
+
+  async function handleOpenFile(publicId: string) {
+    setFileError(null)
+    setOpeningFile(publicId)
+    try {
+      await openSubmissionFile(publicId)
+    } catch {
+      setFileError('Não foi possível abrir o comprovante.')
+    } finally {
+      setOpeningFile(null)
+    }
+  }
 
   useEffect(() => {
     let active = true
@@ -63,6 +78,8 @@ export default function MySubmissionsPage() {
           </Link>
         </div>
 
+        {fileError && <p role="alert" className="text-sm text-red-700">{fileError}</p>}
+
         <div className="overflow-hidden rounded-xl border border-siac-border bg-white shadow-sm">
           <div className="flex items-center gap-3 border-b border-siac-border p-5">
             <ClipboardList size={22} aria-hidden="true" />
@@ -107,9 +124,10 @@ export default function MySubmissionsPage() {
                     <th scope="col" className="px-5 py-4">
                       Quantidade
                     </th>
-                    <th scope="col" className="px-5 py-4">
-                      Data de início
-                    </th>
+                    <th scope="col" className="px-5 py-4">Data de início</th>
+                    <th scope="col" className="px-5 py-4">Status</th>
+                    <th scope="col" className="px-5 py-4">Pontuação</th>
+                    <th scope="col" className="px-5 py-4">Comprovante</th>
                   </tr>
                 </thead>
 
@@ -125,8 +143,16 @@ export default function MySubmissionsPage() {
                       <td className="px-5 py-4">
                         {submission.declared_quantity}
                       </td>
+                      <td className="px-5 py-4">{submission.activity_start_date}</td>
                       <td className="px-5 py-4">
-                        {submission.activity_start_date}
+                        <span className="font-medium">{({ PENDING: 'Pendente', APPROVED: 'Aprovada', REJECTED: 'Rejeitada' } as Record<string, string>)[submission.status ?? ''] ?? submission.status ?? '—'}</span>
+                        {submission.feedback && <p className="mt-1 max-w-xs text-xs text-siac-muted">{submission.feedback}</p>}
+                      </td>
+                      <td className="px-5 py-4">{submission.approved_points ?? '—'}</td>
+                      <td className="px-5 py-4">
+                        <button type="button" onClick={() => void handleOpenFile(submission.public_id)} disabled={openingFile !== null} className="font-semibold text-blue-700 underline disabled:opacity-50">
+                          {openingFile === submission.public_id ? 'Abrindo...' : 'Abrir arquivo'}
+                        </button>
                       </td>
                     </tr>
                   ))}

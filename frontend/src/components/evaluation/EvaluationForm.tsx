@@ -1,5 +1,6 @@
 
 import { useState, type FormEvent } from 'react'
+import { openSubmissionFile } from '../../services/submissionService'
 import evaluationService, {
   type PendingSubmission,
   type EvaluationDecision,
@@ -26,6 +27,19 @@ export default function EvaluationForm({
   const [feedback, setFeedback] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [openingFile, setOpeningFile] = useState(false)
+
+  async function handleOpenFile() {
+    setError(null)
+    setOpeningFile(true)
+    try {
+      await openSubmissionFile(submission.public_id)
+    } catch {
+      setError('Não foi possível abrir o comprovante.')
+    } finally {
+      setOpeningFile(false)
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -87,6 +101,13 @@ export default function EvaluationForm({
         <p className="mt-2 text-sm text-siac-muted">
           {submission.student} — {submission.activity}
         </p>
+      </div>
+
+      <div className="rounded-lg border border-siac-border bg-gray-50 p-4">
+        <p className="mb-2 text-sm text-siac-muted">{submission.description}</p>
+        <button type="button" onClick={() => void handleOpenFile()} disabled={openingFile || isSubmitting} className="text-sm font-semibold text-blue-700 underline disabled:opacity-50">
+          {openingFile ? 'Abrindo comprovante...' : 'Abrir comprovante enviado'}
+        </button>
       </div>
 
       <div>
