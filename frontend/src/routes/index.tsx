@@ -1,16 +1,60 @@
 
 import { Routes, Route } from 'react-router-dom'
+
 import LoginPage from '../pages/LoginPage'
+import RegisterPage from '../pages/RegisterPage'
 import DashboardPage from '../pages/DashboardPage'
+import NewSubmissionPage from '../pages/NewSubmissionPage'
+import MySubmissionsPage from '../pages/MySubmissionsPage'
+import ScorePage from '../pages/ScorePage'
+import PendingSubmissionsPage from '../pages/PendingSubmissionsPage'
+import NotificationsPage from '../pages/NotificationsPage'
+import OpportunitiesPage from '../pages/OpportunitiesPage'
+
 import ProtectedRoute from '../components/ProtectedRoute'
+import RoleProtectedRoute from '../components/ProtectedRoute/RoleProtectedRoute'
+
+const evaluationRoles = [
+  'PROFESSOR',
+  'SIAC_COORDINATOR',
+] as const
 
 function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<LoginPage />} />
+      <Route path="/cadastro" element={<RegisterPage />} />
 
       <Route element={<ProtectedRoute />}>
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/notificacoes" element={<NotificationsPage />} />
+        <Route path="/oportunidades" element={<OpportunitiesPage />} />
+
+        <Route
+          path="/atividades/nova"
+          element={<NewSubmissionPage />}
+        />
+
+        <Route
+          path="/atividades"
+          element={<MySubmissionsPage />}
+        />
+
+        <Route
+          path="/pontuacao"
+          element={<ScorePage />}
+        />
+
+        <Route
+          element={
+            <RoleProtectedRoute allowedRoles={[...evaluationRoles]} />
+          }
+        >
+          <Route
+            path="/avaliacoes/pendentes"
+            element={<PendingSubmissionsPage />}
+          />
+        </Route>
       </Route>
     </Routes>
   )
