@@ -80,6 +80,7 @@ Durante os testes visuais e a montagem das suítes automatizadas nesta etapa de 
 
 1. **UX da tela de Coordenação de Curso (`CourseManagementPage.tsx`):** em inspeção visual na interface local, o campo de curso aparecia como `<Select>` clicável e com texto truncado para `COURSE_COORD`, e os formulários de *Meta Total do Curso* e *Novo Grupo* dividiam o mesmo card. Foi corrigido para exibição somente leitura (`Curso vinculado`) quando não há troca de curso e divisão em dois `<Card>` distintos (coberto por teste de regressão em `CourseManagementPage.test.tsx`).
 2. **Alinhamento de contratos na escrita dos testes:** confirmou-se durante a execução inicial das suítes que a rota de perfil autenticado é `/api/v1/me/` (e não `/api/v1/auth/me/`) e que o campo retornado pelo analytics do curso é `submissions_summary`, ajustando as asserções ao contrato real da API.
+3. **Regra `lib/` no `.gitignore` raiz ocultando `frontend/src/lib/utils.ts` (detectado no CI):** na primeira execução da esteira do GitHub Actions (`frontend-build`), o `Vitest` falhou ao resolver `../../lib/utils` em `src/components/ui/button.tsx` e `badge.tsx` porque o template Python do `.gitignore` raiz continha `lib/` sem âncora na raiz. A regra foi ajustada para `/lib/` e `/lib64/`, incluindo `frontend/src/lib/utils.ts` no versionamento.
 
 ---
 
