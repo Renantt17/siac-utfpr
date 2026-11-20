@@ -1,21 +1,25 @@
+from django.conf import settings
 from django.core.files.storage import default_storage
-from django.db import transaction
-from django.db.models import Q, Sum
-from django.http import FileResponse, Http404
-from django.utils import timezone
+from django.http import FileResponse, Http404, HttpResponse
 from rest_framework import permissions, status
-from rest_framework.decorators import api_view, permission_classes
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import can_manage_course, user_has_role
-from apps.audit.models import AuditLog
-from apps.courses.models import Enrollment
+from apps.accounts.context import get_client_ip
+from apps.accounts.permissions import can_evaluate_course, can_manage_enrollments, user_has_role
 from .models import Notification, Submission
 from .serializers import (
-    NotificationSerializer, PendingSubmissionSerializer,
-    SubmissionCreateSerializer, SubmissionHistorySerializer,
+    NotificationSerializer,
+    SubmissionCreateSerializer,
+    SubmissionDetailSerializer,
+    SubmissionUpdateSerializer,
+)
+from .services import (
+    cancel_submission,
+    create_submission,
+    evaluate_submission,
+    update_submission_by_student,
 )
 
 
@@ -23,64 +27,156 @@ class SubmissionListCreateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        submissions = Submission.objects.filter(
+        qs = Submission.objects.filter(
             enrollment__student=request.user
         ).select_related(
-            'activity_item', 'enrollment__course'
+            'activity_item__group',
+            'original_activity_item',
+            'enrollment__course',
+            'enrollment__student',
+            'evaluator',
         ).order_by('-created_at')
-        return Response(SubmissionHistorySerializer(
-            submissions, many=True, context={'request': request}
-        ).data)
+
+        status_filter = request.query_params.get('status')
+        group_id = request.query_params.get('group_id')
+        semester = request.query_params.get('semester')
+        enrollment_id = request.query_params.get('enrollment_id')
+
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        if group_id and group_id.isdigit():
+            qs = qs.filter(activity_item__group_id=int(group_id))
+        if semester:
+            qs = qs.filter(semester=semester.strip())
+        if enrollment_id and enrollment_id.isdigit():
+            qs = qs.filter(enrollment_id=int(enrollment_id))
+
+        return Response(
+            SubmissionDetailSerializer(qs, many=True, context={'request': request}).data
+        )
 
     def post(self, request):
-        serializer = SubmissionCreateSerializer(
-            data=request.data, context={'request': request}
-        )
+        serializer = SubmissionCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        submission = serializer.save()
+        submission = create_submission(
+            actor=request.user,
+            validated_data=serializer.validated_data,
+            client_ip=get_client_ip(request),
+        )
         return Response(
-            SubmissionHistorySerializer(
-                submission, context={'request': request}
-            ).data,
+            SubmissionDetailSerializer(submission, context={'request': request}).data,
             status=status.HTTP_201_CREATED,
         )
 
 
+class SubmissionDetailManageView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, public_id):
+        submission = Submission.objects.select_related(
+            'activity_item__group',
+            'original_activity_item',
+            'enrollment__course',
+            'enrollment__student',
+            'evaluator',
+        ).filter(public_id=public_id).first()
+        if not submission:
+            raise Http404
+        is_owner = submission.enrollment.student_id == request.user.id
+        if not is_owner and not can_manage_enrollments(request.user, submission.enrollment.course):
+            return Response({'detail': 'Sem permissão para consultar esta submissão.'}, status=403)
+        return Response(SubmissionDetailSerializer(submission, context={'request': request}).data)
+
+    def patch(self, request, public_id):
+        serializer = SubmissionUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        submission = update_submission_by_student(
+            actor=request.user,
+            public_id=public_id,
+            validated_data=serializer.validated_data,
+            resubmit=False,
+            client_ip=get_client_ip(request),
+        )
+        return Response(SubmissionDetailSerializer(submission, context={'request': request}).data)
+
+    def delete(self, request, public_id):
+        submission = cancel_submission(
+            actor=request.user,
+            public_id=public_id,
+            client_ip=get_client_ip(request),
+        )
+        return Response(SubmissionDetailSerializer(submission, context={'request': request}).data)
+
+
+class SubmissionResubmitView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def put(self, request, public_id):
+        serializer = SubmissionUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        submission = update_submission_by_student(
+            actor=request.user,
+            public_id=public_id,
+            validated_data=serializer.validated_data,
+            resubmit=True,
+            client_ip=get_client_ip(request),
+        )
+        return Response(SubmissionDetailSerializer(submission, context={'request': request}).data)
+
+
 class PendingSubmissionListView(ListAPIView):
-    serializer_class = PendingSubmissionSerializer
+    serializer_class = SubmissionDetailSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
-        queryset = Submission.objects.filter(status='PENDING')
-        if user_has_role(user, 'SIAC_COORDINATOR'):
-            queryset = queryset.filter(enrollment__course__campus=user.campus)
-        elif user_has_role(user, 'PROFESSOR'):
-            queryset = queryset.filter(
-                Q(enrollment__course__coordinator=user)
-                | Q(enrollment__course__prac_professor=user)
-            )
-        else:
+        if not user_has_role(user, 'PROFESSOR', 'COURSE_COORD', 'SIAC_COORD'):
             return Submission.objects.none()
-        return queryset.select_related(
-            'enrollment__student', 'enrollment__course', 'activity_item'
-        ).order_by('-created_at')
+
+        status_filter = self.request.query_params.get('status') or Submission.Status.PENDING
+        qs = Submission.objects.filter(status=status_filter)
+        if user_has_role(user, 'PROFESSOR'):
+            qs = qs.filter(enrollment__course__prac_professor=user)
+        elif user_has_role(user, 'COURSE_COORD'):
+            qs = qs.filter(enrollment__course__coordinator=user)
+
+        return qs.select_related(
+            'activity_item__group',
+            'original_activity_item',
+            'enrollment__course',
+            'enrollment__student',
+            'evaluator',
+        ).order_by('created_at')
+
+
+class EvaluateSubmissionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, public_id):
+        submission = evaluate_submission(
+            actor=request.user,
+            public_id=public_id,
+            payload=request.data,
+            client_ip=get_client_ip(request),
+        )
+        return Response(SubmissionDetailSerializer(submission, context={'request': request}).data)
 
 
 class SubmissionFileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, public_id):
-        try:
-            submission = Submission.objects.select_related(
-                'enrollment__course'
-            ).get(public_id=public_id)
-        except Submission.DoesNotExist:
+        submission = Submission.objects.select_related('enrollment__course').filter(
+            public_id=public_id
+        ).first()
+        if not submission:
             raise Http404
 
         user = request.user
         is_owner = submission.enrollment.student_id == user.id
-        is_reviewer = can_manage_course(user, submission.enrollment.course)
+        is_reviewer = can_manage_enrollments(user, submission.enrollment.course) or can_evaluate_course(
+            user, submission.enrollment.course
+        )
         if not (is_owner or is_reviewer):
             return Response(
                 {'detail': 'Você não tem permissão para acessar este comprovante.'},
@@ -88,186 +184,26 @@ class SubmissionFileView(APIView):
             )
         if not default_storage.exists(submission.file_path):
             raise Http404
+
+        disposition = f'attachment; filename="comprovante-{submission.public_id}.{submission.file_ext}"'
+        if getattr(settings, 'USE_X_ACCEL_REDIRECT', False):
+            response = HttpResponse()
+            response['Content-Type'] = submission.mime_type or 'application/octet-stream'
+            response['X-Accel-Redirect'] = f'/protected-media/{submission.file_path}'
+            response['Content-Disposition'] = disposition
+            response['X-Content-Type-Options'] = 'nosniff'
+            response['Cache-Control'] = 'private, no-store'
+            return response
+
         file_handle = default_storage.open(submission.file_path, 'rb')
         response = FileResponse(
             file_handle,
             content_type=submission.mime_type or 'application/octet-stream',
         )
-        response['Content-Disposition'] = (
-            f'attachment; filename="comprovante-{submission.public_id}.{submission.file_ext}"'
-        )
+        response['Content-Disposition'] = disposition
         response['X-Content-Type-Options'] = 'nosniff'
         response['Cache-Control'] = 'private, no-store'
         return response
-
-
-class EvaluateSubmissionView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request, public_id):
-        decision = request.data.get('decision')
-        raw_feedback = request.data.get('feedback', '')
-        if raw_feedback is None:
-            raw_feedback = ''
-        if not isinstance(raw_feedback, str):
-            return Response(
-                {'feedback': 'Informe um texto válido.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        feedback = raw_feedback.strip()
-        if len(feedback) > 2000:
-            return Response(
-                {'feedback': 'O feedback deve ter no máximo 2000 caracteres.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        raw_quantity = request.data.get('validated_quantity')
-
-        if decision not in ('APPROVED', 'REJECTED'):
-            return Response(
-                {'decision': 'Use APPROVED ou REJECTED.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if decision == 'REJECTED' and not feedback:
-            return Response(
-                {'feedback': 'Informe a justificativa da rejeição.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        with transaction.atomic():
-            try:
-                submission = Submission.objects.select_for_update().select_related(
-                    'enrollment__course', 'enrollment__student'
-                ).get(public_id=public_id)
-            except Submission.DoesNotExist:
-                return Response(
-                    {'detail': 'Submissão não encontrada.'},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-            # Serializa avaliações da mesma matrícula para respeitar o teto
-            # semestral do item mesmo quando há várias submissões simultâneas.
-            Enrollment.objects.select_for_update().get(
-                pk=submission.enrollment_id
-            )
-            submission.refresh_from_db()
-            user = request.user
-            course = submission.enrollment.course
-            if not can_manage_course(user, course):
-                return Response(
-                    {'detail': 'Você não tem permissão para avaliar esta atividade.'},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
-            if submission.status != 'PENDING':
-                return Response(
-                    {'detail': 'Esta atividade já foi avaliada.'},
-                    status=status.HTTP_409_CONFLICT,
-                )
-
-            if raw_quantity in (None, ''):
-                validated_quantity = submission.declared_quantity
-            else:
-                try:
-                    validated_quantity = int(raw_quantity)
-                    if isinstance(raw_quantity, bool) or str(raw_quantity).strip() not in (
-                        str(validated_quantity),
-                    ):
-                        raise ValueError
-                except (TypeError, ValueError):
-                    return Response(
-                        {'validated_quantity': 'Informe um número inteiro.'},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-            if not 0 <= validated_quantity <= submission.declared_quantity:
-                return Response(
-                    {'validated_quantity': 'Quantidade validada fora do intervalo permitido.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            if decision == 'REJECTED':
-                validated_quantity = 0
-            elif validated_quantity < 1:
-                return Response(
-                    {'validated_quantity': 'Uma aprovação exige quantidade maior que zero.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            is_coordinator = user_has_role(user, 'SIAC_COORDINATOR')
-            evaluator_role = (
-                'SIAC_COORDINATOR' if is_coordinator else 'PROFESSOR'
-            )
-            previous_status = submission.status
-            submission.evaluator = user
-            submission.evaluator_role = evaluator_role
-            submission.evaluator_feedback = feedback
-            submission.validated_quantity = validated_quantity
-            submission.status = decision
-            submission.evaluated_at = timezone.now()
-
-            if decision == 'APPROVED':
-                points = (
-                    submission.applied_points_per_unit * validated_quantity
-                )
-                already_approved = Submission.objects.filter(
-                    enrollment=submission.enrollment,
-                    activity_item=submission.activity_item,
-                    semester=submission.semester,
-                    status='APPROVED',
-                ).exclude(pk=submission.pk).aggregate(total=Sum('approved_points'))['total'] or 0
-                remaining_limit = max(
-                    submission.applied_max_points_semester - already_approved,
-                    0,
-                )
-                submission.calculated_points = points
-                submission.approved_points = min(points, remaining_limit)
-            else:
-                submission.calculated_points = 0
-                submission.approved_points = 0
-
-            submission.was_adjusted = (
-                validated_quantity != submission.declared_quantity
-            )
-            submission.row_version += 1
-            submission.save()
-
-            Notification.objects.create(
-                recipient=submission.enrollment.student,
-                submission=submission,
-                title=(
-                    'Atividade aprovada' if decision == 'APPROVED'
-                    else 'Atividade rejeitada'
-                ),
-                message=(
-                    feedback or 'Sua atividade foi avaliada.'
-                ),
-            )
-            AuditLog.objects.create(
-                entity_type='Submission',
-                entity_id=submission.pk,
-                action='EVALUATE',
-                actor_id=user.pk,
-                ip_address=self._client_ip(request),
-                previous_status=previous_status,
-                new_status=decision,
-                after_snapshot={
-                    'validated_quantity': submission.validated_quantity,
-                    'approved_points': str(submission.approved_points),
-                    'feedback': feedback,
-                },
-            )
-
-        return Response({
-            'message': 'Avaliação realizada com sucesso.',
-            'public_id': str(submission.public_id),
-            'status': submission.status,
-            'validated_quantity': submission.validated_quantity,
-            'approved_points': submission.approved_points,
-            'evaluator': user.full_name,
-            'feedback': submission.evaluator_feedback,
-        })
-
-    @staticmethod
-    def _client_ip(request):
-        # Não confiar em X-Forwarded-For sem proxy explicitamente confiável.
-        return request.META.get('REMOTE_ADDR')
 
 
 class NotificationListView(ListAPIView):
