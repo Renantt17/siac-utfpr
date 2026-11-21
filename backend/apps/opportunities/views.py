@@ -1,43 +1,72 @@
-from rest_framework import generics, permissions, status
+from django.http import Http404
+from rest_framework import permissions, status
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from apps.accounts.permissions import user_has_role
+from apps.accounts.context import get_client_ip
 from .models import Opportunity
 from .serializers import OpportunitySerializer
+from .services import create_opportunity, list_opportunities, update_opportunity
 
 
-class OpportunityListCreateView(generics.ListCreateAPIView):
-    serializer_class = OpportunitySerializer
+class OpportunityListCreateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        return Opportunity.objects.filter(
-            is_active=True,
-            campus=self.request.user.campus,
-        ).select_related('campus').order_by('-created_at')
+    def get(self, request):
+        include_expired = request.query_params.get('include_expired') == 'true'
+        raw_group = request.query_params.get('group_number')
+        group_number = int(raw_group) if raw_group and raw_group.isdigit() else None
+        modality = request.query_params.get('modality') or None
 
-    def create(self, request, *args, **kwargs):
-        if not user_has_role(request.user, 'SIAC_COORDINATOR', 'PROFESSOR'):
+        items = list_opportunities(
+            user=request.user,
+            include_expired=include_expired,
+            group_number=group_number,
+            modality=modality,
+        )
+        return Response(OpportunitySerializer(items, many=True).data)
+
+    def post(self, request):
+        if not request.user.has_role('SIAC_COORD'):
             return Response(
-                {'detail': 'Somente professores e coordenadores podem cadastrar oportunidades.'},
+                {'detail': 'Apenas o Coordenador do SIAC-UTFPR pode cadastrar oportunidades.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        serializer = self.get_serializer(data=request.data)
+        serializer = OpportunitySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        campus = serializer.validated_data['campus']
-        if campus.id != request.user.campus_id:
-            return Response(
-                {'campus': 'Não é permitido cadastrar oportunidade em outro campus.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        role = request.user.roles.filter(
-            role__in=('SIAC_COORDINATOR', 'PROFESSOR')
-        ).order_by('role').first()
-        opportunity = serializer.save(
-            created_by=role,
-            created_by_role=role.role,
+        opportunity = create_opportunity(
+            actor=request.user,
+            validated_data=serializer.validated_data,
+            client_ip=get_client_ip(request),
         )
-        return Response(
-            self.get_serializer(opportunity).data,
-            status=status.HTTP_201_CREATED,
+        return Response(OpportunitySerializer(opportunity).data, status=status.HTTP_201_CREATED)
+
+
+class OpportunityDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, public_id):
+        opportunity = Opportunity.objects.filter(public_id=public_id).first()
+        if not opportunity:
+            raise Http404
+        serializer = OpportunitySerializer(opportunity, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated = update_opportunity(
+            actor=request.user,
+            opportunity=opportunity,
+            validated_data=serializer.validated_data,
+            client_ip=get_client_ip(request),
         )
+        return Response(OpportunitySerializer(updated).data)
+
+    def delete(self, request, public_id):
+        opportunity = Opportunity.objects.filter(public_id=public_id).first()
+        if not opportunity:
+            raise Http404
+        updated = update_opportunity(
+            actor=request.user,
+            opportunity=opportunity,
+            validated_data={'is_active': False},
+            client_ip=get_client_ip(request),
+        )
+        return Response(OpportunitySerializer(updated).data)

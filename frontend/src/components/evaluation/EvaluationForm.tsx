@@ -1,37 +1,43 @@
+import { useEffect, useState, type FormEvent } from 'react'
+import axios from 'axios'
 
-import { useState, type FormEvent } from 'react'
-import { openSubmissionFile } from '../../services/submissionService'
-import evaluationService, {
-  type PendingSubmission,
-  type EvaluationDecision,
-} from '../../services/evaluationService'
+import { evaluationSchema } from '../../schemas'
+import activityCatalogService, { type ActivityItem } from '../../services/activityCatalogService'
+import evaluationService, { type EvaluationDecision } from '../../services/evaluationService'
+import { openSubmissionFile, type Submission } from '../../services/submissionService'
+import { Alert } from '../ui/badge'
+import { Button } from '../ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
+import { Input, Label, Textarea } from '../ui/input'
+import { Select } from '../ui/select'
 
 interface EvaluationFormProps {
-  submission: PendingSubmission
+  submission: Submission
   onSuccess: () => void
   onCancel: () => void
 }
 
-export default function EvaluationForm({
-  submission,
-  onSuccess,
-  onCancel,
-}: EvaluationFormProps) {
-  const [decision, setDecision] =
-    useState<EvaluationDecision>('APPROVED')
-
-  const [quantity, setQuantity] = useState(
-    String(submission.declared_quantity)
-  )
-
+export default function EvaluationForm({ submission, onSuccess, onCancel }: EvaluationFormProps) {
+  const [decision, setDecision] = useState<EvaluationDecision>('APPROVED')
+  const [quantity, setQuantity] = useState(submission.declared_quantity)
+  const [adjustedItem, setAdjustedItem] = useState(String(submission.activity_item))
+  const [adjustedSemester, setAdjustedSemester] = useState(submission.semester)
   const [feedback, setFeedback] = useState('')
+  const [catalogItems, setCatalogItems] = useState<ActivityItem[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [openingFile, setOpeningFile] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    void activityCatalogService
+      .scoringTable(submission.course_id)
+      .then((groups) => setCatalogItems(groups.flatMap((g) => g.activities.filter((a) => a.is_selectable))))
+      .catch(() => setCatalogItems([]))
+  }, [submission.course_id])
 
   async function handleOpenFile() {
-    setError(null)
     setOpeningFile(true)
+    setError('')
     try {
       await openSubmissionFile(submission.public_id)
     } catch {
@@ -43,168 +49,166 @@ export default function EvaluationForm({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    setError(null)
+    setError('')
 
-    const validatedQuantity = Number(quantity)
+    const parsed = evaluationSchema.safeParse({
+      decision,
+      validated_quantity: quantity,
+      adjusted_activity_item: adjustedItem,
+      adjusted_semester: adjustedSemester,
+      feedback,
+    })
 
-    if (
-      !Number.isInteger(validatedQuantity) ||
-      validatedQuantity < 0 ||
-      validatedQuantity > submission.declared_quantity
-    ) {
-      setError('Informe uma quantidade válida.')
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message || 'Verifique os campos da avaliação.')
       return
     }
-
-    if (!feedback.trim()) {
-      setError('Informe uma justificativa para a decisão.')
-      return
-    }
-
-    const confirmation = window.confirm(
-      decision === 'APPROVED'
-        ? 'Confirma a aprovação desta atividade?'
-        : 'Confirma a rejeição desta atividade?'
-    )
-
-    if (!confirmation) return
 
     setIsSubmitting(true)
-
     try {
       await evaluationService.evaluate(submission.public_id, {
-        decision,
+        decision: parsed.data.decision,
         validated_quantity:
-          decision === 'REJECTED' ? 0 : validatedQuantity,
-        feedback: feedback.trim(),
+          parsed.data.decision === 'APPROVED_WITH_ADJUSTMENTS'
+            ? parsed.data.validated_quantity
+            : undefined,
+        adjusted_activity_item:
+          parsed.data.decision === 'APPROVED_WITH_ADJUSTMENTS'
+            ? Number(parsed.data.adjusted_activity_item)
+            : undefined,
+        adjusted_semester:
+          parsed.data.decision === 'APPROVED_WITH_ADJUSTMENTS'
+            ? parsed.data.adjusted_semester
+            : undefined,
+        feedback: parsed.data.feedback,
+        row_version: submission.row_version,
       })
-
       onSuccess()
-    } catch {
-      setError(
-        'Não foi possível registrar a avaliação. Tente novamente.'
-      )
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        const d = err.response?.data as Record<string, unknown> | undefined
+        if (typeof d?.detail === 'string') setError(d.detail)
+        else if (d && typeof d === 'object') {
+          const first = Object.values(d)[0]
+          setError(Array.isArray(first) ? String(first[0]) : String(first))
+        } else setError('Falha ao registrar avaliação.')
+      } else {
+        setError('Não foi possível registrar a avaliação.')
+      }
     } finally {
       setIsSubmitting(false)
     }
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="space-y-5 rounded-xl border border-siac-border bg-white p-6 shadow-sm"
-    >
-      <div>
-        <h2 className="text-xl font-bold">
-          Avaliar atividade
-        </h2>
-        <p className="mt-2 text-sm text-siac-muted">
-          {submission.student} — {submission.activity}
+    <Card>
+      <CardHeader>
+        <CardTitle>Avaliar atividade de {submission.student}</CardTitle>
+        <p className="text-sm text-siac-muted">
+          {submission.course} • G{submission.group_number} / {submission.activity_code} —{' '}
+          {submission.activity}
         </p>
-      </div>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="rounded-lg border border-siac-border bg-gray-50 p-4 text-sm">
+            <p>
+              <strong>Descrição:</strong> {submission.description}
+            </p>
+            <p className="mt-1">
+              <strong>Período:</strong> {submission.activity_start_date} a {submission.activity_end_date} (
+              {submission.semester}) • <strong>Quantidade declarada:</strong> {submission.declared_quantity}{' '}
+              {submission.applied_unit_name} • <strong>Prévia:</strong> {submission.calculated_points} pts
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              onClick={() => void handleOpenFile()}
+              disabled={openingFile}
+            >
+              {openingFile ? 'Abrindo...' : 'Abrir comprovante enviado'}
+            </Button>
+          </div>
 
-      <div className="rounded-lg border border-siac-border bg-gray-50 p-4">
-        <p className="mb-2 text-sm text-siac-muted">{submission.description}</p>
-        <button type="button" onClick={() => void handleOpenFile()} disabled={openingFile || isSubmitting} className="text-sm font-semibold text-blue-700 underline disabled:opacity-50">
-          {openingFile ? 'Abrindo comprovante...' : 'Abrir comprovante enviado'}
-        </button>
-      </div>
+          <div>
+            <Label htmlFor="eval-decision">Decisão docente</Label>
+            <Select
+              id="eval-decision"
+              value={decision}
+              onChange={(e) => setDecision(e.target.value as EvaluationDecision)}
+            >
+              <option value="APPROVED">Aprovar diretamente</option>
+              <option value="APPROVED_WITH_ADJUSTMENTS">Aprovar com ajustes mínimos</option>
+              <option value="CORRECTION_REQUESTED">Solicitar correções ao estudante</option>
+              <option value="REJECTED">Indeferir (Rejeição definitiva)</option>
+            </Select>
+          </div>
 
-      <div>
-        <label
-          htmlFor="evaluation-decision"
-          className="mb-2 block text-sm font-semibold"
-        >
-          Decisão
-        </label>
+          {decision === 'APPROVED_WITH_ADJUSTMENTS' && (
+            <div className="grid gap-4 rounded-lg border border-yellow-300 bg-yellow-50/50 p-4 sm:grid-cols-3">
+              <div>
+                <Label htmlFor="adj-item">Reenquadrar item</Label>
+                <Select
+                  id="adj-item"
+                  value={adjustedItem}
+                  onChange={(e) => setAdjustedItem(e.target.value)}
+                >
+                  {catalogItems.map((it) => (
+                    <option key={it.id} value={it.id}>
+                      G{it.group_number} / {it.code} — {it.description}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="adj-sem">Semestre (AAAA.1/2)</Label>
+                <Input
+                  id="adj-sem"
+                  value={adjustedSemester}
+                  onChange={(e) => setAdjustedSemester(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="adj-qty">Quantidade validada</Label>
+                <Input
+                  id="adj-qty"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
 
-        <select
-          id="evaluation-decision"
-          value={decision}
-          onChange={(event) =>
-            setDecision(event.target.value as EvaluationDecision)
-          }
-          disabled={isSubmitting}
-          className="w-full rounded-lg border border-siac-border p-3"
-        >
-          <option value="APPROVED">Aprovar</option>
-          <option value="REJECTED">Rejeitar</option>
-        </select>
-      </div>
+          <div>
+            <Label htmlFor="eval-feedback">
+              Parecer / Justificativa {decision !== 'APPROVED' ? '(obrigatório)' : '(opcional)'}
+            </Label>
+            <Textarea
+              id="eval-feedback"
+              rows={3}
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              placeholder="Descreva a justificativa, orientações de correção ou ajustes aplicados."
+            />
+          </div>
 
-      {decision === 'APPROVED' && (
-        <div>
-          <label
-            htmlFor="validated-quantity"
-            className="mb-2 block text-sm font-semibold"
-          >
-            Quantidade validada
-          </label>
+          {error && <Alert variant="danger">{error}</Alert>}
 
-          <input
-            id="validated-quantity"
-            type="number"
-            min="0"
-            max={submission.declared_quantity}
-            step="1"
-            value={quantity}
-            onChange={(event) => setQuantity(event.target.value)}
-            disabled={isSubmitting}
-            required
-            className="w-full rounded-lg border border-siac-border p-3"
-          />
-
-          <p className="mt-2 text-xs text-siac-muted">
-            Quantidade declarada pelo estudante:{' '}
-            {submission.declared_quantity}
-          </p>
-        </div>
-      )}
-
-      <div>
-        <label
-          htmlFor="evaluation-feedback"
-          className="mb-2 block text-sm font-semibold"
-        >
-          Justificativa
-        </label>
-
-        <textarea
-          id="evaluation-feedback"
-          rows={4}
-          value={feedback}
-          onChange={(event) => setFeedback(event.target.value)}
-          disabled={isSubmitting}
-          required
-          className="w-full rounded-lg border border-siac-border p-3"
-          placeholder="Descreva o motivo da decisão."
-        />
-      </div>
-
-      {error && (
-        <p role="alert" className="text-sm text-red-700">
-          {error}
-        </p>
-      )}
-
-      <div className="flex flex-wrap justify-end gap-3">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isSubmitting}
-          className="rounded-lg border border-siac-border px-5 py-3 font-semibold hover:bg-gray-50 disabled:opacity-50"
-        >
-          Cancelar
-        </button>
-
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="rounded-lg bg-utfpr-yellow px-5 py-3 font-semibold text-utfpr-black hover:brightness-95 disabled:opacity-50"
-        >
-          {isSubmitting ? 'Enviando...' : 'Confirmar avaliação'}
-        </button>
-      </div>
-    </form>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={onCancel} disabled={isSubmitting}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Salvando...' : 'Confirmar decisão'}
+            </Button>
+          </div>
+        </form>
+      </CardContent>
+    </Card>
   )
 }

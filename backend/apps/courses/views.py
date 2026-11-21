@@ -1,31 +1,238 @@
-from django.db import IntegrityError, transaction
-from django.db.models import Prefetch, Q
+from django.db.models import Prefetch
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import can_manage_course, user_has_role
-from .models import ActivityGroup, ActivityItem, Course, Enrollment
+from apps.accounts.context import get_client_ip
+from apps.accounts.permissions import can_manage_course_structure, can_manage_enrollments
+from .models import (
+    ActivityGroup,
+    ActivityItem,
+    Course,
+    Enrollment,
+    EnrollmentSuspension,
+)
 from .serializers import (
-    ActivityGroupSerializer, CourseSerializer,
-    EnrollmentCreateSerializer, EnrollmentSerializer,
+    ActivityGroupSerializer,
+    ActivityGroupWriteSerializer,
+    ActivityItemSerializer,
+    ActivityItemWriteSerializer,
+    CourseCreateSerializer,
+    CourseSerializer,
+    CourseUpdateSerializer,
+    EnrollmentCreateSerializer,
+    EnrollmentSerializer,
+    EnrollmentSuspensionSerializer,
+)
+from .services import (
+    create_course,
+    create_enrollment,
+    create_group,
+    create_item,
+    create_suspension,
+    delete_or_deactivate_group,
+    get_course_analytics,
+    list_courses_for_user,
+    update_course,
+    update_group,
+    update_item,
 )
 
 
-class CourseListView(generics.ListAPIView):
-    serializer_class = CourseSerializer
+class CourseListCreateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        user = self.request.user
-        queryset = Course.objects.filter(is_active=True).select_related('campus')
-        if user_has_role(user, 'SIAC_COORDINATOR'):
-            return queryset.filter(campus=user.campus)
-        if user_has_role(user, 'PROFESSOR'):
-            return queryset.filter(
-                Q(coordinator=user) | Q(prac_professor=user)
+    def get(self, request):
+        courses = list_courses_for_user(request.user)
+        return Response(CourseSerializer(courses, many=True).data)
+
+    def post(self, request):
+        serializer = CourseCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        course = create_course(
+            actor=request.user,
+            validated_data=serializer.validated_data,
+            client_ip=get_client_ip(request),
+        )
+        return Response(CourseSerializer(course).data, status=status.HTTP_201_CREATED)
+
+
+class CourseDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, course_id):
+        course = Course.objects.filter(pk=course_id).first()
+        if not course:
+            return Response({'detail': 'Curso não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = CourseUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated = update_course(
+            actor=request.user,
+            course=course,
+            validated_data=serializer.validated_data,
+            client_ip=get_client_ip(request),
+        )
+        return Response(CourseSerializer(updated).data)
+
+
+class CourseScoringTableView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, course_id=None):
+        cid = course_id or request.query_params.get('course_id')
+        if not cid or not str(cid).isdigit():
+            return Response(
+                {'course_id': 'Informe um identificador numérico de curso válido.'},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        return queryset.filter(campus=user.campus)
+
+        course = Course.objects.filter(pk=cid, is_active=True).first()
+        if not course:
+            return Response({'detail': 'Curso não encontrado ou inativo.'}, status=status.HTTP_404_NOT_FOUND)
+
+        is_enrolled = Enrollment.objects.filter(
+            student=request.user, course=course, status='ACTIVE'
+        ).exists()
+        is_manager = can_manage_enrollments(request.user, course)
+        if not is_enrolled and not is_manager:
+            return Response(
+                {'detail': 'Você não possui matrícula ou permissão para consultar este curso.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        include_inactive = (
+            request.query_params.get('include_inactive') == 'true'
+            and can_manage_course_structure(request.user, course)
+        )
+        group_qs = ActivityGroup.objects.filter(course=course).order_by('group_number')
+        item_qs = ActivityItem.objects.select_related('parent_item').order_by('code')
+        if not include_inactive:
+            group_qs = group_qs.filter(is_active=True)
+            item_qs = item_qs.filter(is_active=True)
+
+        groups = group_qs.prefetch_related(Prefetch('activity_items', queryset=item_qs))
+        return Response(ActivityGroupSerializer(groups, many=True).data)
+
+
+class CourseGroupListCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, course_id):
+        course = Course.objects.filter(pk=course_id).first()
+        if not course:
+            return Response({'detail': 'Curso não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = ActivityGroupWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        for req_field in ('group_number', 'title'):
+            if req_field not in serializer.validated_data:
+                return Response({req_field: 'Campo obrigatório.'}, status=status.HTTP_400_BAD_REQUEST)
+        group = create_group(
+            actor=request.user,
+            course=course,
+            validated_data=serializer.validated_data,
+            client_ip=get_client_ip(request),
+        )
+        return Response(ActivityGroupSerializer(group).data, status=status.HTTP_201_CREATED)
+
+
+class CourseGroupDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, course_id, group_id):
+        group = ActivityGroup.objects.select_related('course').filter(
+            pk=group_id, course_id=course_id
+        ).first()
+        if not group:
+            return Response({'detail': 'Grupo não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = ActivityGroupWriteSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated = update_group(
+            actor=request.user,
+            group=group,
+            validated_data=serializer.validated_data,
+            client_ip=get_client_ip(request),
+        )
+        return Response(ActivityGroupSerializer(updated).data)
+
+    def delete(self, request, course_id, group_id):
+        group = ActivityGroup.objects.select_related('course').filter(
+            pk=group_id, course_id=course_id
+        ).first()
+        if not group:
+            return Response({'detail': 'Grupo não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        outcome = delete_or_deactivate_group(
+            actor=request.user, group=group, client_ip=get_client_ip(request)
+        )
+        return Response({'outcome': outcome})
+
+
+class CourseItemCreateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, course_id, group_id):
+        group = ActivityGroup.objects.select_related('course').filter(
+            pk=group_id, course_id=course_id
+        ).first()
+        if not group:
+            return Response({'detail': 'Grupo não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = ActivityItemWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        item = create_item(
+            actor=request.user,
+            group=group,
+            validated_data=serializer.validated_data,
+            client_ip=get_client_ip(request),
+        )
+        return Response(ActivityItemSerializer(item).data, status=status.HTTP_201_CREATED)
+
+
+class CourseItemDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, course_id, item_id):
+        item = ActivityItem.objects.select_related('group__course').filter(
+            pk=item_id, group__course_id=course_id
+        ).first()
+        if not item:
+            return Response({'detail': 'Item não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = ActivityItemWriteSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated = update_item(
+            actor=request.user,
+            item=item,
+            validated_data=serializer.validated_data,
+            client_ip=get_client_ip(request),
+        )
+        return Response(ActivityItemSerializer(updated).data)
+
+
+class CourseAnalyticsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, course_id):
+        course = Course.objects.filter(pk=course_id).first()
+        if not course:
+            return Response({'detail': 'Curso não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        data = get_course_analytics(actor=request.user, course=course)
+        return Response(data)
+
+
+class CourseEnrollmentListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, course_id):
+        course = Course.objects.filter(pk=course_id).first()
+        if not course:
+            return Response({'detail': 'Curso não encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        if not can_manage_enrollments(request.user, course):
+            return Response(
+                {'detail': 'Sem permissão para listar matrículas deste curso.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        enrollments = Enrollment.objects.filter(course=course).select_related(
+            'student', 'course', 'course__campus'
+        ).order_by('student__full_name')
+        return Response(EnrollmentSerializer(enrollments, many=True).data)
 
 
 class MyEnrollmentsView(generics.ListAPIView):
@@ -35,9 +242,10 @@ class MyEnrollmentsView(generics.ListAPIView):
     def get_queryset(self):
         return Enrollment.objects.filter(
             student=self.request.user,
-            status='ACTIVE',
             course__is_active=True,
-        ).select_related('course', 'course__campus').order_by('course__name')
+        ).exclude(status='CANCELED').select_related(
+            'student', 'course', 'course__campus'
+        ).order_by('course__name')
 
 
 class EnrollmentCreateView(APIView):
@@ -46,85 +254,47 @@ class EnrollmentCreateView(APIView):
     def post(self, request):
         serializer = EnrollmentCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        course = serializer.validated_data['course']
-        if not can_manage_course(request.user, course):
-            return Response(
-                {'detail': 'Você não pode matricular estudantes neste curso.'},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        try:
-            with transaction.atomic():
-                enrollment, created = Enrollment.objects.get_or_create(
-                    student=serializer.validated_data['student'],
-                    course=course,
-                    defaults={
-                        'enrollment_date': serializer.validated_data['enrollment_date'],
-                        'status': 'ACTIVE',
-                    },
-                )
-        except IntegrityError:
-            return Response(
-                {'detail': 'Já existe uma matrícula para este estudante e curso.'},
-                status=status.HTTP_409_CONFLICT,
-            )
-        if not created:
-            return Response(
-                {'detail': 'O estudante já possui matrícula neste curso.'},
-                status=status.HTTP_409_CONFLICT,
-            )
-        return Response(
-            EnrollmentSerializer(enrollment).data,
-            status=status.HTTP_201_CREATED,
+        enrollment = create_enrollment(
+            actor=request.user,
+            student=serializer.validated_data['student'],
+            course=serializer.validated_data['course'],
+            enrollment_date=serializer.validated_data['enrollment_date'],
+            client_ip=get_client_ip(request),
         )
+        return Response(EnrollmentSerializer(enrollment).data, status=status.HTTP_201_CREATED)
 
 
-class ActivityCatalogView(generics.ListAPIView):
-    serializer_class = ActivityGroupSerializer
+class EnrollmentSuspensionListCreateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def list(self, request, *args, **kwargs):
-        course_id = request.query_params.get('course_id')
-        if not course_id:
+    def get(self, request, enrollment_id):
+        enrollment = Enrollment.objects.select_related('course').filter(pk=enrollment_id).first()
+        if not enrollment:
+            return Response({'detail': 'Matrícula não encontrada.'}, status=status.HTTP_404_NOT_FOUND)
+        is_owner = enrollment.student_id == request.user.id
+        if not is_owner and not can_manage_enrollments(request.user, enrollment.course):
             return Response(
-                {'course_id': 'Informe o curso para consultar o catálogo.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if not course_id.isdigit():
-            return Response(
-                {'course_id': 'Informe um identificador numérico válido.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        course = Course.objects.filter(
-            pk=course_id, is_active=True
-        ).first()
-        if not course:
-            return Response(
-                {'detail': 'Curso não encontrado ou inativo.'},
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        is_enrolled = Enrollment.objects.filter(
-            student=request.user,
-            course=course,
-            status='ACTIVE',
-        ).exists()
-        if not is_enrolled and not can_manage_course(request.user, course):
-            return Response(
-                {'detail': 'Você não possui matrícula ou permissão para consultar este curso.'},
+                {'detail': 'Sem permissão para consultar trancamentos desta matrícula.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        return super().list(request, *args, **kwargs)
+        suspensions = EnrollmentSuspension.objects.filter(enrollment=enrollment).order_by('start_date')
+        return Response(EnrollmentSuspensionSerializer(suspensions, many=True).data)
 
-    def get_queryset(self):
-        course_id = self.request.query_params.get('course_id')
-        return ActivityGroup.objects.filter(
-            course_id=course_id,
-            is_active=True,
-            activity_items__is_active=True,
-        ).prefetch_related(Prefetch(
-            'activity_items',
-            queryset=ActivityItem.objects.filter(
-                is_active=True, is_selectable=True
-            ).order_by('code'),
-        )).distinct().order_by('group_number')
+    def post(self, request, enrollment_id):
+        enrollment = Enrollment.objects.select_related('course').filter(pk=enrollment_id).first()
+        if not enrollment:
+            return Response({'detail': 'Matrícula não encontrada.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = EnrollmentSuspensionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        suspension = create_suspension(
+            actor=request.user,
+            enrollment=enrollment,
+            start_date=serializer.validated_data['start_date'],
+            end_date=serializer.validated_data['end_date'],
+            reason=serializer.validated_data.get('reason') or '',
+            client_ip=get_client_ip(request),
+        )
+        return Response(
+            EnrollmentSuspensionSerializer(suspension).data,
+            status=status.HTTP_201_CREATED,
+        )
