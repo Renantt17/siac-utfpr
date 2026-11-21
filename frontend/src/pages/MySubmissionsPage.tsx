@@ -128,15 +128,15 @@ export default function MySubmissionsPage() {
 
   return (
     <AppLayout>
-      <section className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      <section className="min-w-0 space-y-6">
+        <div className="flex min-w-0 flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
           <div>
-            <h1 className="text-3xl font-bold text-utfpr-black">Minhas atividades</h1>
+            <h1 className="text-2xl font-bold text-utfpr-black sm:text-3xl">Minhas atividades</h1>
             <p className="mt-2 text-siac-muted">
               Acompanhe avaliações, pareceres docentes, correções solicitadas e ajustes.
             </p>
           </div>
-          <Button asChild>
+          <Button asChild className="w-full sm:w-auto">
             <Link to="/atividades/nova">
               <FilePlus2 size={18} aria-hidden="true" /> Nova atividade
             </Link>
@@ -144,8 +144,8 @@ export default function MySubmissionsPage() {
         </div>
 
         <Card>
-          <CardContent className="flex flex-wrap items-end gap-4">
-            <div className="w-52">
+          <CardContent className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-end">
+            <div className="min-w-0">
               <Label htmlFor="f-status">Situação</Label>
               <Select id="f-status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                 <option value="">Todas</option>
@@ -157,7 +157,7 @@ export default function MySubmissionsPage() {
                 <option value="CANCELED">Cancelada</option>
               </Select>
             </div>
-            <div className="w-40">
+            <div className="min-w-0">
               <Label htmlFor="f-group">Grupo</Label>
               <Select id="f-group" value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)}>
                 <option value="">Todos</option>
@@ -166,7 +166,7 @@ export default function MySubmissionsPage() {
                 <option value="3">Grupo 3</option>
               </Select>
             </div>
-            <div className="w-40">
+            <div className="min-w-0">
               <Label htmlFor="f-sem">Semestre (ex.: 2026.1)</Label>
               <Input
                 id="f-sem"
@@ -175,7 +175,7 @@ export default function MySubmissionsPage() {
                 onChange={(e) => setSemesterFilter(e.target.value)}
               />
             </div>
-            <Button type="button" variant="outline" onClick={() => void load()}>
+            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => void load()}>
               <RefreshCw size={16} aria-hidden="true" /> Filtrar
             </Button>
           </CardContent>
@@ -186,7 +186,7 @@ export default function MySubmissionsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex min-w-0 items-center gap-2 text-base sm:text-lg">
               <ClipboardList size={20} aria-hidden="true" /> Histórico de solicitações
             </CardTitle>
           </CardHeader>
@@ -198,8 +198,9 @@ export default function MySubmissionsPage() {
             ) : submissions.length === 0 ? (
               <p className="p-8 text-center text-siac-muted">Nenhuma atividade encontrada.</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
+              <>
+              <div className="hidden min-w-0 overflow-x-auto lg:block">
+                <table className="w-full min-w-[850px] text-left text-sm">
                   <thead className="bg-gray-50 text-gray-700">
                     <tr>
                       <th scope="col" className="px-4 py-3">Atividade</th>
@@ -283,18 +284,76 @@ export default function MySubmissionsPage() {
                   </tbody>
                 </table>
               </div>
+              <div className="space-y-3 p-3 sm:p-4 lg:hidden">
+                {submissions.map((sub) => {
+                  const meta = STATUS_META[sub.status] ?? { label: sub.status, variant: 'default' }
+                  return (
+                    <article key={sub.public_id} className="min-w-0 space-y-3 rounded-lg border border-siac-border bg-white p-4">
+                      <div className="min-w-0 space-y-1">
+                        <p className="break-words font-semibold text-utfpr-black">{sub.description}</p>
+                        <p className="break-words text-xs text-siac-muted">{sub.course}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant={meta.variant}>{meta.label}</Badge>
+                        <span className="text-xs text-siac-muted">G{sub.group_number} — {sub.activity_code}</span>
+                      </div>
+                      <dl className="grid grid-cols-2 gap-3 text-sm">
+                        <div className="min-w-0">
+                          <dt className="text-xs text-siac-muted">Semestre</dt>
+                          <dd className="font-medium">{sub.semester}</dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="text-xs text-siac-muted">Pontos</dt>
+                          <dd className="font-medium">
+                            {sub.approved_points !== null
+                              ? `${sub.approved_points} pts`
+                              : `Est.: ${sub.calculated_points} pts`}
+                          </dd>
+                        </div>
+                      </dl>
+                      {sub.evaluator_feedback && (
+                        <div className="min-w-0 rounded-md bg-gray-50 p-3 text-sm">
+                          <p className="mb-1 font-semibold">Parecer</p>
+                          <p className="whitespace-pre-wrap break-words">{sub.evaluator_feedback}</p>
+                        </div>
+                      )}
+                      <div className="flex flex-wrap gap-2 border-t border-siac-border pt-3">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setDetailTarget(sub)}>
+                          <Eye size={14} aria-hidden="true" /> Detalhes
+                        </Button>
+                        {sub.status === 'PENDING' && (
+                          <>
+                            <Button type="button" variant="outline" size="sm" onClick={() => openEditModal(sub, 'edit')}>
+                              <Pencil size={14} aria-hidden="true" /> Editar
+                            </Button>
+                            <Button type="button" variant="destructive" size="sm" onClick={() => void handleCancel(sub)}>
+                              <Trash2 size={14} aria-hidden="true" /> Cancelar
+                            </Button>
+                          </>
+                        )}
+                        {sub.status === 'CORRECTION_REQUESTED' && (
+                          <Button type="button" size="sm" onClick={() => openEditModal(sub, 'resubmit')}>
+                            Corrigir e reenviar
+                          </Button>
+                        )}
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+              </>
             )}
           </CardContent>
         </Card>
 
         <Dialog open={Boolean(detailTarget)} onOpenChange={(o) => !o && setDetailTarget(null)}>
-          <DialogContent>
+          <DialogContent className="max-h-[90dvh] w-[calc(100vw-2rem)] max-w-lg overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Detalhes da atividade</DialogTitle>
               <DialogDescription>{detailTarget?.description}</DialogDescription>
             </DialogHeader>
             {detailTarget && (
-              <div className="space-y-4 text-sm">
+              <div className="min-w-0 space-y-4 break-words text-sm">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <p className="font-semibold">Item aplicado</p>
@@ -346,7 +405,7 @@ export default function MySubmissionsPage() {
         </Dialog>
 
         <Dialog open={Boolean(editTarget)} onOpenChange={(o) => !o && setEditTarget(null)}>
-          <DialogContent>
+          <DialogContent className="max-h-[90dvh] w-[calc(100vw-2rem)] max-w-lg overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 {editTarget?.mode === 'resubmit' ? 'Corrigir e reenviar atividade' : 'Editar submissão pendente'}
@@ -357,7 +416,7 @@ export default function MySubmissionsPage() {
                   : 'Atualize os dados ou substitua o comprovante.'}
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={(e) => void handleSaveEdit(e)} className="space-y-4">
+            <form onSubmit={(e) => void handleSaveEdit(e)} className="min-w-0 space-y-4">
               <div>
                 <Label htmlFor="ed-desc">Descrição</Label>
                 <Textarea id="ed-desc" required value={editDesc} onChange={(e) => setEditDesc(e.target.value)} />
@@ -393,11 +452,11 @@ export default function MySubmissionsPage() {
                   onChange={(e) => setEditFile(e.target.files?.[0] ?? null)}
                 />
               </div>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setEditTarget(null)}>
                   Fechar
                 </Button>
-                <Button type="submit" disabled={savingEdit}>
+                <Button type="submit" className="w-full sm:w-auto" disabled={savingEdit}>
                   {savingEdit ? 'Salvando...' : editTarget?.mode === 'resubmit' ? 'Reenviar para avaliação' : 'Salvar alterações'}
                 </Button>
               </div>
