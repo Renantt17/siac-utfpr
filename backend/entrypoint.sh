@@ -1,4 +1,5 @@
 #!/bin/bash
+# Mantido com quebras de linha LF via .gitattributes
 set -euo pipefail
 
 python manage.py migrate --noinput
