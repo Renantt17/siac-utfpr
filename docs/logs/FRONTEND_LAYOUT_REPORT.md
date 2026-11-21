@@ -37,9 +37,13 @@ Após validação visual local em telas de notebook e desktop, foram aplicados d
      - **Mobile:** exibidos automaticamente como último item dentro do menu retrátil.
      - **Estilo:** utilizado `<Button variant="destructive">` (fundo vermelho `bg-red-600`, ícone `LogOut` + rótulo `Sair`).
 
+3. **Atualização do favicon e metadados (`frontend/index.html`, `frontend/public/favicon.png` e `favicon.ico`):**
+   - Substituído o ícone padrão do Vite (`favicon.svg`) pelo logotipo oficial do SIAC em `favicon.png` (`192x192`, cantos transparentes) e `favicon.ico` (`16x16`, `32x32`, `48x48`).
+   - Ajustados `lang="pt-BR"` e o `<title>` para `SIAC-UTFPR — Sistema Integrado de Atividades Complementares`.
+
 ---
 
 ## 3. Verificações Executadas
 
-- Build de produção do frontend (`tsc -b && vite build`) via imagem `codigo-nginx` concluído sem erros.
-- Container `siac-nginx` em execução local respondendo `HTTP 200` em `/`.
+- `npm run lint` (`oxlint`: 0 erros), `npm test` (Vitest: 9/9 aprovados) e `npm run build` (`tsc -b && vite build`).
+- Container `siac-nginx` em execução local respondendo `HTTP 200` em `/`, `/favicon.png` e `/favicon.ico`.
