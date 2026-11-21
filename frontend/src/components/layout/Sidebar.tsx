@@ -1,6 +1,6 @@
 
 import { useState } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   Award,
   Bell,
@@ -12,16 +12,25 @@ import {
   FilePlus2,
   GraduationCap,
   LayoutDashboard,
+  LogOut,
   Menu,
   Shield,
   UserPlus,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { Button } from '../ui/button'
 
 export default function Sidebar() {
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
   const location = useLocation()
+  const navigate = useNavigate()
   const [menuAberto, setMenuAberto] = useState(false)
+
+  function handleLogout() {
+    setMenuAberto(false)
+    logout()
+    navigate('/')
+  }
 
   const roles = user?.roles ?? []
 
@@ -65,7 +74,7 @@ export default function Sidebar() {
   return (
     <aside
       aria-label="Menu lateral"
-      className="w-full min-w-0 shrink-0 border-b border-siac-border bg-white md:w-64 md:border-r md:border-b-0"
+      className="w-full min-w-0 shrink-0 border-b border-siac-border bg-white md:flex md:w-64 md:flex-col md:border-r md:border-b-0"
     >
       <div className="p-3 md:hidden">
         <button
@@ -93,33 +102,57 @@ export default function Sidebar() {
       <nav
         id="menu-principal-siac"
         aria-label="Navegação principal"
-        className={`flex-col gap-1 px-3 pb-3 md:flex md:p-4 ${
+        className={`flex-col justify-between gap-2 px-3 pb-3 md:flex md:flex-1 md:p-4 ${
           menuAberto ? 'flex' : 'hidden'
         }`}
       >
-        <p className="mb-2 hidden px-4 text-xs font-bold uppercase tracking-wider text-siac-muted md:block">
-          Navegação
-        </p>
+        <div className="flex flex-col gap-1">
+          <p className="mb-2 hidden px-4 text-xs font-bold uppercase tracking-wider text-siac-muted md:block">
+            Navegação
+          </p>
 
-        {menuItems.map(({ label, path, icon: Icon }) => (
-          <NavLink
-            key={path}
-            to={path}
-            end
-            onClick={() => setMenuAberto(false)}
-            className={({ isActive }) =>
-              [
-                'flex min-w-0 items-center gap-3 rounded-lg border-l-4 px-4 py-3 text-sm font-medium transition-colors md:py-2.5',
-                isActive
-                  ? 'border-utfpr-yellow bg-yellow-50 font-semibold text-utfpr-black'
-                  : 'border-transparent text-gray-600 hover:bg-gray-100 hover:text-utfpr-black',
-              ].join(' ')
-            }
+          {menuItems.map(({ label, path, icon: Icon }) => (
+            <NavLink
+              key={path}
+              to={path}
+              end
+              onClick={() => setMenuAberto(false)}
+              className={({ isActive }) =>
+                [
+                  'flex min-w-0 items-center gap-3 rounded-lg border-l-4 px-4 py-3 text-sm font-medium transition-colors md:py-2.5',
+                  isActive
+                    ? 'border-utfpr-yellow bg-yellow-50 font-semibold text-utfpr-black'
+                    : 'border-transparent text-gray-600 hover:bg-gray-100 hover:text-utfpr-black',
+                ].join(' ')
+              }
+            >
+              <Icon size={18} aria-hidden="true" className="shrink-0" />
+              <span className="min-w-0 break-words">{label}</span>
+            </NavLink>
+          ))}
+        </div>
+
+        <div className="mt-2 border-t border-siac-border pt-3 md:mt-auto">
+          {user && (
+            <div className="mb-3 px-2 text-xs text-siac-muted">
+              <p className="truncate font-semibold text-utfpr-black">{user.full_name}</p>
+              <p className="truncate">
+                {user.institutional_id} • {user.campus}
+              </p>
+            </div>
+          )}
+
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={handleLogout}
+            aria-label="Sair do sistema"
+            className="w-full justify-center"
           >
-            <Icon size={18} aria-hidden="true" className="shrink-0" />
-            <span className="min-w-0 break-words">{label}</span>
-          </NavLink>
-        ))}
+            <LogOut size={18} aria-hidden="true" />
+            <span>Sair</span>
+          </Button>
+        </div>
       </nav>
     </aside>
   )
