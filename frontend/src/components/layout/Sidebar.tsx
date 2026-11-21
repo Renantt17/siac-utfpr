@@ -1,14 +1,18 @@
-import { NavLink } from 'react-router-dom'
+
+import { useState } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
 import {
   Award,
   Bell,
   BookOpen,
   CalendarDays,
+  ChevronDown,
   ClipboardCheck,
   ClipboardList,
   FilePlus2,
   GraduationCap,
   LayoutDashboard,
+  Menu,
   Shield,
   UserPlus,
 } from 'lucide-react'
@@ -16,6 +20,9 @@ import { useAuth } from '../../contexts/AuthContext'
 
 export default function Sidebar() {
   const { user } = useAuth()
+  const location = useLocation()
+  const [menuAberto, setMenuAberto] = useState(false)
+
   const roles = user?.roles ?? []
 
   const isStudent = roles.includes('STUDENT')
@@ -51,13 +58,46 @@ export default function Sidebar() {
       : []),
   ]
 
+  const paginaAtual =
+    menuItems.find((item) => item.path === location.pathname)?.label ??
+    'Navegação'
+
   return (
     <aside
       aria-label="Menu lateral"
-      className="w-full shrink-0 border-b border-siac-border bg-white md:w-64 md:border-r md:border-b-0"
+      className="w-full min-w-0 shrink-0 border-b border-siac-border bg-white md:w-64 md:border-r md:border-b-0"
     >
-      <nav aria-label="Navegação principal" className="flex flex-col gap-1 p-4">
-        <p className="mb-2 px-4 text-xs font-bold uppercase tracking-wider text-siac-muted">
+      <div className="p-3 md:hidden">
+        <button
+          type="button"
+          aria-expanded={menuAberto}
+          aria-controls="menu-principal-siac"
+          onClick={() => setMenuAberto((aberto) => !aberto)}
+          className="flex w-full items-center justify-between gap-3 rounded-lg border border-siac-border bg-white px-4 py-3 text-sm font-semibold text-utfpr-black transition-colors hover:bg-yellow-50"
+        >
+          <span className="flex min-w-0 items-center gap-3">
+            <Menu size={20} aria-hidden="true" className="shrink-0" />
+            <span className="truncate">{paginaAtual}</span>
+          </span>
+
+          <ChevronDown
+            size={18}
+            aria-hidden="true"
+            className={`shrink-0 transition-transform ${
+              menuAberto ? 'rotate-180' : ''
+            }`}
+          />
+        </button>
+      </div>
+
+      <nav
+        id="menu-principal-siac"
+        aria-label="Navegação principal"
+        className={`flex-col gap-1 px-3 pb-3 md:flex md:p-4 ${
+          menuAberto ? 'flex' : 'hidden'
+        }`}
+      >
+        <p className="mb-2 hidden px-4 text-xs font-bold uppercase tracking-wider text-siac-muted md:block">
           Navegação
         </p>
 
@@ -66,17 +106,18 @@ export default function Sidebar() {
             key={path}
             to={path}
             end
+            onClick={() => setMenuAberto(false)}
             className={({ isActive }) =>
               [
-                'flex items-center gap-3 rounded-lg px-4 py-2.5 text-sm font-medium transition-colors',
+                'flex min-w-0 items-center gap-3 rounded-lg border-l-4 px-4 py-3 text-sm font-medium transition-colors md:py-2.5',
                 isActive
-                  ? 'border-l-4 border-utfpr-yellow bg-yellow-50 text-utfpr-black font-semibold'
-                  : 'border-l-4 border-transparent text-gray-600 hover:bg-gray-100 hover:text-utfpr-black',
+                  ? 'border-utfpr-yellow bg-yellow-50 font-semibold text-utfpr-black'
+                  : 'border-transparent text-gray-600 hover:bg-gray-100 hover:text-utfpr-black',
               ].join(' ')
             }
           >
-            <Icon size={18} aria-hidden="true" />
-            <span>{label}</span>
+            <Icon size={18} aria-hidden="true" className="shrink-0" />
+            <span className="min-w-0 break-words">{label}</span>
           </NavLink>
         ))}
       </nav>
