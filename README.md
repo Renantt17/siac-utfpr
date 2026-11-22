@@ -1,175 +1,181 @@
-# SIAC-UTFPR
+# SIAC-UTFPR — Sistema Integrado de Atividades Complementares
 
-Sistema Integrado de Atividades Complementares da UTFPR.
+## Sobre o projeto
 
-## Stack
+O SIAC-UTFPR é uma plataforma web desenvolvida com o objetivo de facilitar e centralizar o gerenciamento das Atividades Complementares dos cursos da Universidade Tecnológica Federal do Paraná (UTFPR).
 
-- Python 3.12 / Django 5.2
-- Django REST Framework e SimpleJWT
-- PostgreSQL 16
+O projeto busca organizar o processo de registro, envio, avaliação e homologação das atividades realizadas pelos estudantes, oferecendo um ambiente integrado para estudantes, docentes responsáveis e coordenações.
+
+## Objetivo
+
+O sistema foi idealizado para tornar o processo de validação das atividades complementares mais organizado, acessível e transparente. A proposta é reduzir a dependência de procedimentos manuais, centralizar os comprovantes e registros acadêmicos e aplicar os critérios específicos de cada curso durante a avaliação.
+
+Além disso, o projeto contempla o acompanhamento da pontuação dos estudantes, a divulgação de oportunidades e a geração de relatórios relacionados à homologação.
+
+## Principais funcionalidades
+
+- Cadastro e envio de atividades complementares com seus respectivos comprovantes.
+- Avaliação das atividades pelos docentes responsáveis.
+- Aplicação dos critérios e limites de pontuação definidos para cada curso.
+- Acompanhamento das atividades submetidas e de seus respectivos status.
+- Homologação das atividades e geração de relatórios consolidados.
+- Divulgação de oportunidades acadêmicas, como cursos, palestras e eventos.
+- Registro de ações e alterações para fins de auditoria.
+
+## Equipe de desenvolvimento
+
+- Ana Lucia Weber Cattani
+- Bruno Fernandes Belém
+- Diandelys Castilho Wolff
+- Letícia Ceron Hass
+- Lucas Bueno dos Santos
+- Renan Gabriel Pilonetto
+
+## Tecnologias utilizadas
+
+| Área | Tecnologias |
+|---|---|
+| Frontend | React 18, TypeScript, Vite e Tailwind CSS |
+| Componentes e validação | shadcn/ui e Zod |
+| Backend | Python 3.12, Django 5.2 e Django REST Framework |
+| Autenticação | SimpleJWT |
+| Banco de dados | PostgreSQL 16 |
+| Infraestrutura | Docker, Docker Compose e Nginx |
+| Testes | Pytest e Vitest |
+
+## Arquitetura
+
+O SIAC-UTFPR utiliza uma arquitetura cliente-servidor, com frontend e backend separados e comunicação por meio de uma API REST.
+
+O backend segue o modelo de monólito modular, organizado em seis módulos principais:
+
+- **accounts:** gerenciamento de usuários, autenticação e permissões.
+- **courses:** gerenciamento de cursos, matrículas, grupos de atividades e tabelas de pontuação.
+- **submissions:** envio, armazenamento e avaliação das atividades complementares.
+- **homologation:** consolidação das pontuações e processos de homologação.
+- **opportunities:** cadastro e divulgação de oportunidades acadêmicas.
+- **audit:** registro das principais ações e alterações realizadas no sistema.
+
+O PostgreSQL utiliza os schemas `app` e `audit` para separar os dados operacionais dos registros de auditoria.
+
+## Documentação
+
+A documentação do projeto está disponível na pasta [`docs/`](./docs/).
+
+- **Entregas acadêmicas:** documentos das semanas de desenvolvimento, contendo regras de negócio, requisitos e modelagem do sistema.
+- **Arquitetura:** decisões arquiteturais, diagramas e tecnologias.
+- **Banco de dados:** modelagem física e scripts SQL.
+- **Logs e relatórios:** registros de validações, entregas e documentação técnica.
+- **Testes:** relatório consolidado dos testes realizados.
+- **Relatório final:** documento final do projeto.
+
+## Como executar localmente
+
+> Os procedimentos abaixo utilizam Docker e Docker Compose para executar os serviços do projeto.
+
+### 1. Pré-requisitos
+
+- Git
+- Docker
 - Docker Compose
-- Frontend React/Vite (o ZIP recebido contém apenas o diretório placeholder `frontend/`; o código-fonte React não estava presente no arquivo enviado).
 
-## Inicialização local
+### 2. Clonar o repositório
 
-1. Copie `.env.example` para `.env`.
-2. Defina `SECRET_KEY`, `POSTGRES_PASSWORD` e `DB_PASSWORD` com valores locais seguros e iguais para a senha do PostgreSQL.
-3. Inicie o banco e o backend:
+```bash
+git clone https://github.com/Renantt17/siac-utfpr.git
+cd siac-utfpr
+```
+
+### 3. Configurar as variáveis de ambiente
+
+Copie o arquivo `.env.example` para `.env` e configure os valores locais de `SECRET_KEY`, `POSTGRES_PASSWORD` e `DB_PASSWORD`.
+
+```bash
+cp .env.example .env
+```
+
+Para gerar uma chave secreta:
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+**Observações:**
+- Não versione o arquivo `.env` nem utilize credenciais de produção em ambiente local.
+- Caso a porta `5432` já esteja em uso, ajuste `POSTGRES_PORT` no arquivo `.env`.
+
+### 4. Iniciar os serviços
 
 ```bash
 docker compose up --build -d
-docker compose exec backend python manage.py migrate
-docker compose exec backend python manage.py createsuperuser
 ```
 
-As migrações iniciais criam os schemas PostgreSQL `app` e `audit` automaticamente, antes das tabelas. Não apague o volume `postgres_data` para resolver problemas de migração.
+O comando inicia os serviços definidos no Docker Compose, incluindo PostgreSQL, backend e frontend servido pelo Nginx.
 
-As portas externas podem ser alteradas no `.env` por `BACKEND_PORT` e `POSTGRES_PORT`. As portas internas dos containers permanecem 8000 e 5432.
-
-## Dados de demonstração
-
-Com `DEBUG=True`, gere dados de desenvolvimento:
+### 5. Carregar os dados iniciais
 
 ```bash
-docker compose exec backend python manage.py seed_dev --password "Defina-Uma-Senha-Forte!"
+docker compose exec backend python manage.py seed_siac --password "SUA_SENHA_LOCAL" --allow-prod
 ```
 
-O comando cria, de forma idempotente, um campus, curso, matrícula, grupo, item de atividade, um estudante, um professor, um coordenador e exemplos de submissões pendente/aprovada/rejeitada.
+A senha informada será utilizada pelas contas de demonstração criadas pelo comando.
 
-Contas criadas:
-- `estudante@siac.local`
-- `professor@siac.local`
-- `coordenador@siac.local`
+### 6. Acessar a aplicação
 
-Todas recebem a senha informada no argumento `--password`. Não execute esse seed em produção.
+- **Aplicação:** http://localhost:8080
 
-## Autenticação
+### Contas de demonstração
 
-Login:
+| Perfil | Identificador | E-mail |
+|---|---|---|
+| Estudante | `a2500001` | `estudante@alunos.utfpr.edu.br` |
+| Docente PRAC | `PRAC0001` | `prac.bes.dv@utfpr.edu.br` |
+| Coordenação de Curso | `COORD001` | `coord.bes.dv@utfpr.edu.br` |
+| Coordenador SIAC | `SIAC0001` | `siac.coord@utfpr.edu.br` |
 
-```http
-POST /api/token/
-Content-Type: application/json
+Todas as contas utilizam a senha definida no comando `seed_siac`.
 
-{"email":"estudante@siac.local","password":"SUA_SENHA"}
+## Desenvolvimento e testes
+
+### Modo de desenvolvimento com Hot Reload
+
+Para executar o frontend com o Vite Dev Server na porta `5173`:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 
-Use o `access` em `Authorization: Bearer <token>`. Renove com `POST /api/token/refresh/`.
+### Verificação do backend
 
-## Endpoints
-
-| Método | Endpoint | Acesso | Finalidade |
-|---|---|---|---|
-| POST | `/api/register/` | Público | Cadastro de estudante |
-| GET | `/api/campuses/` | Público | Campi ativos |
-| GET | `/api/students/` | Professor ou coordenador | Estudantes ativos do campus |
-| POST | `/api/token/` | Público | Login JWT |
-| POST | `/api/token/refresh/` | Público | Renovar JWT |
-| GET | `/api/me/` | Autenticado | Perfil e papéis |
-| GET | `/api/courses/` | Autenticado | Cursos ativos do campus / cursos atribuídos ao professor |
-| GET | `/api/enrollments/me/` | Estudante | Matrículas ativas do usuário |
-| POST | `/api/enrollments/` | Professor responsável ou coordenador do campus | Vincular estudante a curso |
-| GET | `/api/activity-items/?course_id=1` | Estudante matriculado ou responsável pelo curso | Grupos e itens selecionáveis |
-| POST | `/api/submissions/` | Estudante | Enviar atividade e comprovante |
-| GET | `/api/submissions/` | Estudante | Histórico próprio |
-| GET | `/api/submissions/pending/` | Professor responsável ou coordenador do campus | Fila de avaliação |
-| POST | `/api/submissions/{public_id}/evaluate/` | Professor responsável ou coordenador do campus | Avaliar submissão |
-| GET | `/api/submissions/{public_id}/file/` | Dono da submissão ou avaliador autorizado | Abrir comprovante |
-| GET | `/api/homologation/summary/` | Estudante | Pontuação, progresso e contagens |
-| POST | `/api/homologation/{enrollment_id}/finalize/` | Professor responsável ou coordenador do campus | Homologar e gerar PDF |
-| GET | `/api/homologation/{public_id}/report/` | Estudante dono ou avaliador autorizado | Baixar relatório PDF |
-| GET | `/api/notifications/` | Autenticado | Notificações do usuário |
-| PATCH | `/api/notifications/{public_id}/read/` | Dono da notificação | Marcar como lida |
-| GET | `/api/opportunities/` | Autenticado | Oportunidades ativas do campus |
-| POST | `/api/opportunities/` | Professor ou coordenador | Cadastrar oportunidade |
-
-## Contratos principais
-
-### Cadastro
-
-`POST /api/register/` — `application/json`:
-
-```json
-{
-  "full_name": "Nome do Estudante",
-  "email": "estudante@exemplo.com",
-  "institutional_id": "1234567",
-  "campus": 1,
-  "password": "UmaSenhaForte!2026",
-  "confirmPassword": "UmaSenhaForte!2026"
-}
+```bash
+docker compose exec backend python manage.py check
+docker compose exec backend pytest -v
 ```
 
-O campo `campus` recebe o ID retornado por `GET /api/campuses/`. O cadastro público sempre cria apenas o papel `STUDENT`.
+### Testes e build do frontend
 
-### Matrículas
-
-`GET /api/enrollments/me/` retorna somente matrículas ativas do usuário autenticado.
-
-A criação administrativa usa `POST /api/enrollments/`:
-
-```json
-{
-  "student_id": 3,
-  "course_id": 1,
-  "enrollment_date": "2026-11-16"
-}
+```bash
+cd frontend
+npm test
+npm run lint
+npm run build
 ```
 
-A operação só é permitida ao professor responsável pelo curso ou ao coordenador SIAC do mesmo campus. O estudante não pode criar ou escolher sua própria matrícula.
+### Comandos de manutenção
 
-### Catálogo
+```bash
+# Consultar os containers
+docker compose ps
 
-`GET /api/activity-items/?course_id=1` retorna grupos ativos com a lista `activities`. Cada item informa `id`, `code`, `description`, `points_per_unit`, `unit_name`, `max_points_semester`, `required_proof_description` e `is_selectable`.
+# Acompanhar os logs
+docker compose logs -f backend nginx
 
-### Envio de atividade
-
-`POST /api/submissions/` — `multipart/form-data`:
-
-| Campo | Tipo |
-|---|---|
-| `enrollment` | ID da matrícula do próprio estudante |
-| `activity_item` | ID do item selecionado no catálogo |
-| `description` | Texto |
-| `activity_start_date` | `YYYY-MM-DD` |
-| `activity_end_date` | `YYYY-MM-DD` |
-| `semester` | `AAAA-1` ou `AAAA-2` |
-| `declared_quantity` | Inteiro maior que zero |
-| `file` | PDF, JPG ou PNG; máximo 10 MB |
-
-O status inicial é sempre `PENDING`; o cliente não pode definir status nem pontos. O backend valida o conteúdo real do arquivo, não apenas sua extensão ou `Content-Type`.
-
-### Avaliação
-
-`POST /api/submissions/{public_id}/evaluate/`:
-
-```json
-{
-  "decision": "APPROVED",
-  "validated_quantity": 1,
-  "feedback": "Atividade validada."
-}
+# Parar os serviços
+docker compose down
 ```
 
-`decision` aceita `APPROVED` ou `REJECTED`. Rejeições exigem justificativa. Uma submissão só pode ser avaliada uma vez. A aprovação gera notificação ao estudante e registro de auditoria.
+Para remover também os volumes e os dados locais, utilize `docker compose down -v`.
 
-### Resumo de pontuação
+---
 
-`GET /api/homologation/summary/` retorna, por matrícula ativa, total aprovado, mínimo do curso, progresso por grupo, limites de pontuação por item e contagens de submissões aprovadas, pendentes e rejeitadas.
-
-A homologação definitiva exige atingir o mínimo total do curso e o mínimo de cada grupo ativo, conforme os valores cadastrados nos modelos. O relatório é gerado em PDF e seu hash SHA-256 fica armazenado.
-
-## Permissões
-
-- Cadastro público cria somente estudante.
-- Professor avalia e gerencia matrículas somente nos cursos em que é coordenador ou professor responsável.
-- Coordenador SIAC atua somente no campus associado à sua conta.
-- Estudante acessa somente matrículas, submissões, notificações e comprovantes próprios.
-- Arquivos de comprovantes não são publicados por URL estática; o acesso passa por endpoint autenticado e autorizado.
-
-## Observações
-
-- O backend usa `django-cors-headers` e permite por padrão `http://localhost:5173` e `http://127.0.0.1:5173`; configure `CORS_ALLOWED_ORIGINS` no `.env` para outros endereços.
-- Os schemas `app` e `audit` são criados idempotentemente no início das migrações iniciais de `accounts` e `audit`, sem adicionar dependência anterior às migrações já aplicadas.
-- A integração com portal externo não está implementada; a homologação registra `portal_sync_status=NOT_CONFIGURED`.
-- O ZIP recebido não continha os arquivos-fonte do frontend, então os contratos foram preparados a partir dos requisitos fornecidos e das APIs existentes, não de inspeção dos componentes React.
+**SIAC-UTFPR** — Sistema Integrado de Atividades Complementares.

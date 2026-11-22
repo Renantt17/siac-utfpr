@@ -1,52 +1,13 @@
-
-import { useEffect, useState } from 'react'
 import { Navigate, Outlet } from 'react-router-dom'
-
-import userService, {
-  type UserRole,
-} from '../../services/userService'
+import { useAuth } from '../../contexts/AuthContext'
+import type { UserRole } from '../../services/userService'
 
 interface RoleProtectedRouteProps {
   allowedRoles: UserRole[]
 }
 
-export default function RoleProtectedRoute({
-  allowedRoles,
-}: RoleProtectedRouteProps) {
-  const [isLoading, setIsLoading] = useState(true)
-  const [isAuthorized, setIsAuthorized] = useState(false)
-
-  useEffect(() => {
-    let active = true
-
-    async function checkPermission() {
-      try {
-        const user = await userService.getCurrentUser()
-
-        const hasPermission = user.roles.some((role) =>
-          allowedRoles.includes(role)
-        )
-
-        if (active) {
-          setIsAuthorized(hasPermission)
-        }
-      } catch {
-        if (active) {
-          setIsAuthorized(false)
-        }
-      } finally {
-        if (active) {
-          setIsLoading(false)
-        }
-      }
-    }
-
-    void checkPermission()
-
-    return () => {
-      active = false
-    }
-  }, [allowedRoles])
+export default function RoleProtectedRoute({ allowedRoles }: RoleProtectedRouteProps) {
+  const { user, isLoading } = useAuth()
 
   if (isLoading) {
     return (
@@ -59,7 +20,8 @@ export default function RoleProtectedRoute({
     )
   }
 
-  if (!isAuthorized) {
+  const hasPermission = Boolean(user?.roles.some((role) => allowedRoles.includes(role)))
+  if (!hasPermission) {
     return <Navigate to="/dashboard" replace />
   }
 
